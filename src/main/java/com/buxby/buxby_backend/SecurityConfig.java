@@ -1,6 +1,7 @@
 
 package com.buxby.buxby_backend;
 
+import com.buxby.buxby_backend.auth.CustomOAuth2UserService;
 import com.buxby.buxby_backend.user.AppUserRepository;
 
 import java.util.Locale;
@@ -9,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -17,18 +19,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 
 @Configuration
 public class SecurityConfig {
 
-    // 비밀번호 암호화
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 로그인 인증 담당
     @Bean
     public AuthenticationManager authenticationManager(
             AuthenticationConfiguration configuration
@@ -36,7 +35,6 @@ public class SecurityConfig {
         return configuration.getAuthenticationManager();
     }
 
-    // 이메일로 회원 정보 조회
     @Bean
     public UserDetailsService userDetailsService(
             AppUserRepository repository
@@ -58,17 +56,16 @@ public class SecurityConfig {
                 );
     }
 
-    // 로그인 상태를 HTTP 세션에 저장
     @Bean
     public SecurityContextRepository securityContextRepository() {
         return new HttpSessionSecurityContextRepository();
     }
 
-    // Spring Security 설정
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            SecurityContextRepository contextRepository
+            SecurityContextRepository contextRepository,
+            CustomOAuth2UserService customOAuth2UserService
     ) throws Exception {
 
         http
@@ -81,6 +78,8 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/api/auth/signup",
                                 "/api/auth/login",
+                                "/oauth2/**",
+                                "/login/oauth2/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
@@ -116,7 +115,31 @@ public class SecurityConfig {
 
                 .formLogin(form -> form.disable())
 
-                // 로그아웃 설정
+                // 소셜 로그인 (Kakao, Google, Naver)
+                .oauth2Login(oauth -> oauth
+
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService)
+                        )
+
+                        // 로그인 성공
+                        .successHandler((request, response, authentication) -> {
+                            response.sendRedirect(
+                                    "http://localhost:5173/?socialLogin=success"
+                            );
+                        })
+
+                        // 로그인 실패
+                        .failureHandler((request, response, exception) -> {
+                            exception.printStackTrace();
+
+                            response.sendRedirect(
+                                    "http://localhost:5173/?socialLogin=failed"
+                            );
+                        })
+                )
+
+                // 로그아웃
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
                         .invalidateHttpSession(true)

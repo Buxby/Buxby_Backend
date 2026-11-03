@@ -27,6 +27,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Locale;
 import java.util.Map;
 
+import java.util.Locale;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -159,6 +162,7 @@ public class AuthController {
     }
 
     // 현재 로그인한 사용자 정보
+
     @GetMapping("/me")
     public ResponseEntity<?> me(
             Authentication authentication
@@ -174,9 +178,25 @@ public class AuthController {
                     ));
         }
 
+        // 기본은 일반 로그인
+        String provider = "LOCAL";
+
+        // 일반 로그인 사용자의 식별값은 이메일
+        String providerId = authentication.getName();
+
+        // 카카오 로그인이라면 제공자와 사용자 ID 변경
+        if (authentication instanceof OAuth2AuthenticationToken oauth) {
+
+            provider = oauth.getAuthorizedClientRegistrationId()
+                    .toUpperCase(Locale.ROOT);
+
+            providerId = authentication.getName();
+        }
+
+        // 해당 로그인 방식에 맞는 회원 조회
         return userRepository.findByProviderAndProviderId(
-                        "LOCAL",
-                        authentication.getName()
+                        provider,
+                        providerId
                 )
                 .<ResponseEntity<?>>map(user ->
                         ResponseEntity.ok(
@@ -192,6 +212,7 @@ public class AuthController {
                         ResponseEntity.notFound().build()
                 );
     }
+
 
     // 로그인 실패 처리
     @ExceptionHandler(AuthenticationException.class)
