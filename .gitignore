@@ -35,3 +35,11 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### API Keys & Secrets ###
+.env
+.env.*
+!.env.example
+application-local.properties
+application-local.yml
+application-local.yaml

@@ -105,7 +105,18 @@ public class SecurityConfig {
                                 "/h2-console/**",
                                 "/api/auth/signup",
                                 "/api/auth/login",
-                                "/api/auth/logout"
+                                "/api/auth/logout",
+
+                                // Buxby AI / 교통정보 / 알람 API
+                                "/api/ai/**",
+                                "/api/journey/**",
+                                "/api/alarm/**",
+                                "/api/alarms/**",
+                                "/api/alarm-reservations",
+                                "/api/alarm-reservations/**",
+                                "/api/preparation/**",
+                                "/api/route/**",
+                                "/api/bus/**"
                         )
                 )
 
