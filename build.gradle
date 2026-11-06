@@ -31,6 +31,9 @@ dependencies {
 	// Gemini, ODsay 등에서 사용하는 Jackson 2
 	implementation 'com.fasterxml.jackson.core:jackson-databind:2.20.1'
 
+	// 서울시 버스 API XML 응답 처리
+	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.20.1'
+
 	runtimeOnly 'com.h2database:h2'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'

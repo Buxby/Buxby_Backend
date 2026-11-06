@@ -111,6 +111,9 @@ public class SecurityConfig {
                                 "/api/ai/**",
                                 "/api/journey/**",
                                 "/api/alarm/**",
+                                "/api/alarms/**",
+                                "/api/alarm-reservations",
+                                "/api/alarm-reservations/**",
                                 "/api/preparation/**",
                                 "/api/route/**",
                                 "/api/bus/**"
