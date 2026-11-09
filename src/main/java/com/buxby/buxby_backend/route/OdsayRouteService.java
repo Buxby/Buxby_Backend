@@ -29,7 +29,7 @@ public class OdsayRouteService {
                 .queryParam("EX", endLongitude).queryParam("EY", endLatitude)
                 .queryParam("OPT", 0).build().encode().toUri();
             JsonNode json = mapper.readTree(client.get().uri(uri).retrieve().body(String.class));
-            if (json.has("error")) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "ODsay 오류: " + json.path("error").path("msg").asText("조회 실패"));
+            if (json.has("error")) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "ODsay 오류: " + errorMessage(json.path("error")));
             return json;
         } catch (RestClientResponseException e) {
             System.err.println("[ODsay] HTTP 오류 코드: " + e.getStatusCode());
@@ -37,5 +37,10 @@ public class OdsayRouteService {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "ODsay API 요청 실패 (서버 로그 확인)", e);
         } catch (ResponseStatusException e) { throw e;
         } catch (Exception e) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "ODsay 경로 검색 실패", e); }
+    }
+    // ODsay는 오류를 {"code","msg"} 또는 [{"code","message"}] 형태로 준다
+    private static String errorMessage(JsonNode error) {
+        JsonNode item = error.isArray() ? error.path(0) : error;
+        return item.path("message").asText(item.path("msg").asText("조회 실패"));
     }
 }
