@@ -36,6 +36,18 @@ public class SeoulBusAutoMatchService {
             double endLongitude,
             double endLatitude
     ) {
+        return match(startLongitude, startLatitude, endLongitude, endLatitude, null, null);
+    }
+
+    // 버스 번호를 주면 그 버스가 포함된 경로 중 최단 경로를 조회한다. 승차 정류장은 우선 조건이다.
+    public Map<String, Object> match(
+            double startLongitude,
+            double startLatitude,
+            double endLongitude,
+            double endLatitude,
+            String requestedBusNo,
+            String requestedStation
+    ) {
         JsonNode routes = odsay.search(
                 startLongitude,
                 startLatitude,
@@ -52,34 +64,25 @@ public class SeoulBusAutoMatchService {
             );
         }
 
-        JsonNode selected = null;
-        int shortest = Integer.MAX_VALUE;
+        JsonNode selected = shortestBusPath(paths, requestedBusNo, requestedStation);
 
-        for (JsonNode path : paths) {
-            int minutes = path.path("info")
-                    .path("totalTime").asInt(-1);
-
-            boolean hasBus = false;
-
-            for (JsonNode section : path.path("subPath")) {
-                if (section.path("trafficType").asInt() == 2) {
-                    hasBus = true;
-                    break;
-                }
-            }
-
-            if (hasBus && minutes > 0 && minutes < shortest) {
-                shortest = minutes;
-                selected = path;
-            }
+        if (selected == null && !isBlank(requestedStation)) {
+            selected = shortestBusPath(paths, requestedBusNo, null);
         }
 
         if (selected == null) {
-            return Map.of(
-                    "status", "NO_BUS_ROUTE",
-                    "message", "버스가 포함된 경로가 없습니다."
-            );
+            return isBlank(requestedBusNo)
+                    ? Map.of(
+                            "status", "NO_BUS_ROUTE",
+                            "message", "버스가 포함된 경로가 없습니다."
+                    )
+                    : Map.of(
+                            "status", "NO_MATCHING_BUS_ROUTE",
+                            "message", "선택한 버스가 포함된 경로가 없습니다."
+                    );
         }
+
+        int shortest = selected.path("info").path("totalTime").asInt();
 
         List<Map<String, Object>> busSections = new ArrayList<>();
 
@@ -252,6 +255,53 @@ public class SeoulBusAutoMatchService {
         result.put("busSections", busSections);
 
         return result;
+    }
+
+    static JsonNode shortestBusPath(JsonNode paths, String busNo, String stationName) {
+        JsonNode selected = null;
+        int shortest = Integer.MAX_VALUE;
+
+        for (JsonNode path : paths) {
+            int minutes = path.path("info").path("totalTime").asInt(-1);
+
+            if (minutes > 0 && minutes < shortest && hasBusSection(path, busNo, stationName)) {
+                shortest = minutes;
+                selected = path;
+            }
+        }
+
+        return selected;
+    }
+
+    private static boolean hasBusSection(JsonNode path, String busNo, String stationName) {
+        for (JsonNode section : path.path("subPath")) {
+            if (section.path("trafficType").asInt() != 2) {
+                continue;
+            }
+
+            boolean atStation = isBlank(stationName)
+                    || stationName.equals(section.path("startName").asText());
+
+            if (atStation && (isBlank(busNo) || hasBus(section, busNo))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean hasBus(JsonNode section, String busNo) {
+        for (JsonNode lane : section.path("lane")) {
+            if (busNo.equals(lane.path("busNo").asText())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private Map<String, Object> getRouteArrivals(

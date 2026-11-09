@@ -25,13 +25,17 @@ public class SeoulBusAutoMatchController {
             @RequestParam double startLongitude,
             @RequestParam double startLatitude,
             @RequestParam double endLongitude,
-            @RequestParam double endLatitude
+            @RequestParam double endLatitude,
+            @RequestParam(required = false) String busNo,
+            @RequestParam(required = false) String stationName
     ) {
         return service.match(
                 startLongitude,
                 startLatitude,
                 endLongitude,
-                endLatitude
+                endLatitude,
+                busNo,
+                stationName
         );
     }
 }

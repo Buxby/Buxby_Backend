@@ -2,6 +2,7 @@
 package com.buxby.buxby_backend.alarm;
 
 import com.buxby.buxby_backend.ai.GeminiService;
+import com.buxby.buxby_backend.auth.CurrentUserService;
 import com.buxby.buxby_backend.route.OdsayRouteService;
 import com.buxby.buxby_backend.transit.SeoulBusAutoMatchService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,6 +31,7 @@ public class IntegratedJourneyController {
     private final AlarmReservationRepository reservations;
     private final SeoulBusAutoMatchService busAutoMatch;
     private final ObjectMapper mapper;
+    private final CurrentUserService currentUser;
 
     public IntegratedJourneyController(
             GeminiService gemini,
@@ -36,7 +39,8 @@ public class IntegratedJourneyController {
             PreparationController preparation,
             AlarmReservationRepository reservations,
             SeoulBusAutoMatchService busAutoMatch,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            CurrentUserService currentUser
     ) {
         this.gemini = gemini;
         this.odsay = odsay;
@@ -44,10 +48,10 @@ public class IntegratedJourneyController {
         this.reservations = reservations;
         this.busAutoMatch = busAutoMatch;
         this.mapper = mapper;
+        this.currentUser = currentUser;
     }
 
     public record JourneyRequest(
-            @NotBlank String userId,
             String message,
 
             @NotNull
@@ -97,8 +101,11 @@ public class IntegratedJourneyController {
 
     @PostMapping("/plan")
     public JourneyResponse plan(
-            @Valid @RequestBody JourneyRequest req
+            @Valid @RequestBody JourneyRequest req,
+            Authentication authentication
     ) {
+
+        String userId = currentUser.requireUserId(authentication);
 
         Map<String, Object> interpreted =
                 new LinkedHashMap<>();
@@ -235,7 +242,7 @@ public class IntegratedJourneyController {
             );
         }
 
-        var predicted = preparation.predict(req.userId());
+        var predicted = preparation.predictFor(userId);
 
         int buffer = req.bufferMinutes() == null
                 ? 5
@@ -335,7 +342,7 @@ public class IntegratedJourneyController {
 
             reservationId = reservations.save(
                     new AlarmReservation(
-                            req.userId(),
+                            userId,
                             destination,
                             arrival,
                             wake,

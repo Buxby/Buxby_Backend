@@ -28,7 +28,6 @@ import java.util.Locale;
 import java.util.Map;
 
 import java.util.Locale;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -38,17 +37,20 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contextRepository;
+    private final CurrentUserService currentUser;
 
     public AuthController(
             AppUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            SecurityContextRepository contextRepository
+            SecurityContextRepository contextRepository,
+            CurrentUserService currentUser
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.contextRepository = contextRepository;
+        this.currentUser = currentUser;
     }
 
     // 회원가입 요청
@@ -178,26 +180,8 @@ public class AuthController {
                     ));
         }
 
-        // 기본은 일반 로그인
-        String provider = "LOCAL";
-
-        // 일반 로그인 사용자의 식별값은 이메일
-        String providerId = authentication.getName();
-
-        // 카카오 로그인이라면 제공자와 사용자 ID 변경
-        if (authentication instanceof OAuth2AuthenticationToken oauth) {
-
-            provider = oauth.getAuthorizedClientRegistrationId()
-                    .toUpperCase(Locale.ROOT);
-
-            providerId = authentication.getName();
-        }
-
         // 해당 로그인 방식에 맞는 회원 조회
-        return userRepository.findByProviderAndProviderId(
-                        provider,
-                        providerId
-                )
+        return currentUser.find(authentication)
                 .<ResponseEntity<?>>map(user ->
                         ResponseEntity.ok(
                                 new UserResponse(
