@@ -5,8 +5,10 @@ import com.buxby.buxby_backend.route.OdsayRouteService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -302,6 +304,21 @@ public class SeoulBusAutoMatchService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    // 노선 전체 정류소의 도착 정보 (서울시 getArrInfoByRouteAll). 조회 실패는 502로 알린다.
+    public List<Map<String, Object>> routeArrivalItems(String busRouteId) {
+        Map<String, Object> arrivals = getRouteArrivals(busRouteId);
+        // 코드 4(결과 없음)는 서울 노선이 아닌 경우라 빈 목록으로 본다
+        if (String.valueOf(arrivals.get("message")).endsWith("(코드: 4)")) {
+            return List.of();
+        }
+        if (!"SUCCESS".equals(arrivals.get("status"))) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "서울시 버스 도착정보 조회 실패: " + arrivals.get("message"));
+        }
+        return normalizeItems(arrivals.get("items"));
     }
 
     private Map<String, Object> getRouteArrivals(
