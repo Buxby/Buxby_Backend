@@ -6,6 +6,7 @@ import com.buxby.buxby_backend.user.AppUserRepository;
 
 import java.util.Locale;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -65,7 +66,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository contextRepository,
-            CustomOAuth2UserService customOAuth2UserService
+            CustomOAuth2UserService customOAuth2UserService,
+            // 간편 로그인 후 돌아갈 프론트 주소 (배포 시 FRONTEND_URL)
+            @Value("${app.frontend-url}") String frontendUrl
     ) throws Exception {
 
         http
@@ -136,7 +139,7 @@ public class SecurityConfig {
                         // 로그인 성공
                         .successHandler((request, response, authentication) -> {
                             response.sendRedirect(
-                                    "http://localhost:5173/?socialLogin=success"
+                                    frontendUrl + "/?socialLogin=success"
                             );
                         })
 
@@ -145,7 +148,7 @@ public class SecurityConfig {
                             exception.printStackTrace();
 
                             response.sendRedirect(
-                                    "http://localhost:5173/?socialLogin=failed"
+                                    frontendUrl + "/?socialLogin=failed"
                             );
                         })
                 )

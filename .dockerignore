@@ -1,0 +1,11 @@
+# API 키가 든 파일은 이미지에 넣지 않는다 (Render 환경 변수로 넣음)
+.env
+.env.*
+
+.git
+.gradle
+.idea
+build
+out
+bin
+*.iml
