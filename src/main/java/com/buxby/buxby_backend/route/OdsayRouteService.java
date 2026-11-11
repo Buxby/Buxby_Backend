@@ -27,9 +27,10 @@ public class OdsayRouteService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "좌표 범위가 올바르지 않습니다.");
         try {
             URI uri = UriComponentsBuilder.fromUriString("https://api.odsay.com/v1/api/searchPubTransPathT")
-                .queryParam("apiKey", key).queryParam("SX", startLongitude).queryParam("SY", startLatitude)
+                // 키에 '+'가 있으면 그대로 보낼 때 공백으로 읽혀 인증이 실패하므로 템플릿 변수로 넣어 %2B로 인코딩한다
+                .queryParam("apiKey", "{apiKey}").queryParam("SX", startLongitude).queryParam("SY", startLatitude)
                 .queryParam("EX", endLongitude).queryParam("EY", endLatitude)
-                .queryParam("OPT", 0).build().encode().toUri();
+                .queryParam("OPT", 0).encode().buildAndExpand(key).toUri();
             // URI 방식 키는 등록한 도메인을 Referer로 보내야 통과한다 (배포 서버는 IP가 바뀌어서 서버 키 IP 등록이 안 됨)
             RestClient.RequestHeadersSpec<?> request = client.get().uri(uri);
             if (!referer.isBlank()) request = request.header("Referer", referer);
