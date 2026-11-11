@@ -16,8 +16,10 @@ public class OdsayRouteService {
     private final RestClient client = RestClient.create();
     private final ObjectMapper mapper;
     private final String key;
-    public OdsayRouteService(ObjectMapper mapper, @Value("${odsay.api.key:}") String key) {
-        this.mapper = mapper; this.key = key;
+    private final String referer;
+    public OdsayRouteService(ObjectMapper mapper, @Value("${odsay.api.key:}") String key,
+                             @Value("${odsay.referer:}") String referer) {
+        this.mapper = mapper; this.key = key; this.referer = referer;
     }
     public JsonNode search(double startLongitude, double startLatitude, double endLongitude, double endLatitude) {
         if (key.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "ODSay API 키가 필요합니다 (ODSAY_API_KEY).");
@@ -28,7 +30,10 @@ public class OdsayRouteService {
                 .queryParam("apiKey", key).queryParam("SX", startLongitude).queryParam("SY", startLatitude)
                 .queryParam("EX", endLongitude).queryParam("EY", endLatitude)
                 .queryParam("OPT", 0).build().encode().toUri();
-            JsonNode json = mapper.readTree(client.get().uri(uri).retrieve().body(String.class));
+            // URI 방식 키는 등록한 도메인을 Referer로 보내야 통과한다 (배포 서버는 IP가 바뀌어서 서버 키 IP 등록이 안 됨)
+            RestClient.RequestHeadersSpec<?> request = client.get().uri(uri);
+            if (!referer.isBlank()) request = request.header("Referer", referer);
+            JsonNode json = mapper.readTree(request.retrieve().body(String.class));
             if (json.has("error")) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "ODsay 오류: " + errorMessage(json.path("error")));
             return json;
         } catch (RestClientResponseException e) {
