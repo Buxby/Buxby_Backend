@@ -12,12 +12,14 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class BusApproachServiceTest {
 
     private final TagoService tago = mock(TagoService.class);
-    private final BusApproachService service = new BusApproachService(tago);
+    private final SeoulBusAutoMatchService seoul = mock(SeoulBusAutoMatchService.class);
+    private final BusApproachService service = new BusApproachService(tago, seoul);
 
     private static final String NEARBY = """
             {"response":{"header":{"resultCode":"00"},"body":{"items":{"item":[
@@ -124,6 +126,83 @@ class BusApproachServiceTest {
 
         service.find("DJB8001418", "대전역", 36.3325, 127.4321, List.of("DJB30300058"), null);
         service.find("DJB8001418", "대전역", 36.3325, 127.4321, List.of("DJB30300058"), null);
+
+        verify(tago, times(1)).nearbyStops(anyDouble(), anyDouble(), anyInt());
+    }
+
+    private static final String NO_NEARBY = """
+            {"response":{"header":{"resultCode":"00"},"body":{"items":"","totalCount":0}}}
+            """;
+
+    @Test
+    void usesSeoulArrivalsWhenTagoHasNoStop() {
+        stub(NO_NEARBY, ARRIVALS);
+        when(seoul.routeArrivalItems("100100118")).thenReturn(List.of(
+                Map.of("stId", "101000001", "rtNm", "100", "arrmsg1", "곧 도착", "exps1", "50"),
+                Map.of("stId", "101000005", "rtNm", "100", "staOrd", "20",
+                        "arrmsg1", "4분12초후[2번째 전]", "exps1", "252", "sectOrd1", "18",
+                        "arrmsg2", "15분3초후[9번째 전]", "exps2", "903", "sectOrd2", "11")));
+        when(seoul.routeArrivalItems("100100124")).thenReturn(List.of(
+                Map.of("stId", "101000005", "rtNm", "143", "arrmsg1", "운행종료", "exps1", "0",
+                        "arrmsg2", "운행종료", "exps2", "0")));
+
+        var result = service.find("101000005", "서울역버스환승센터", 37.5547, 126.9707,
+                List.of("100100118", "100100124"), List.of("100", "143"));
+
+        assertEquals("FOUND", result.status());
+        assertEquals("SEOUL", result.provider());
+        assertEquals(List.of(
+                new BusApproachService.Arrival("100", "100100118", 2, 252),
+                new BusApproachService.Arrival("100", "100100118", 9, 903)
+        ), result.arrivals());
+    }
+
+    @Test
+    void prefersSeoulOverSameNamedTagoStopFromAnotherCity() {
+        // 홍대입구역은 인천 노선이 지나 TAGO에 ICB313000422로도 등록돼 있다
+        stub("""
+                {"response":{"header":{"resultCode":"00"},"body":{"items":{"item":[
+                  {"citycode":23,"gpslati":37.5563,"gpslong":126.9236,"nodeid":"ICB313000422","nodenm":"홍대입구역"}
+                ]}}}}
+                """, ARRIVALS);
+        when(seoul.routeArrivalItems("100100592")).thenReturn(List.of(
+                Map.of("stId", "113000422", "rtNm", "7101", "arrmsg1", "12분52초후[1번째 전]", "exps1", "772")));
+
+        var result = service.find("113000422", "홍대입구역", 37.5563, 126.9236, List.of("100100592"), List.of("7101"));
+
+        assertEquals("SEOUL", result.provider());
+        assertEquals(new BusApproachService.Arrival("7101", "100100592", 1, 772), result.arrivals().get(0));
+    }
+
+    @Test
+    void reportsNoArrivalWhenSeoulBusesAreNotRunning() {
+        stub(NO_NEARBY, ARRIVALS);
+        when(seoul.routeArrivalItems("100100124")).thenReturn(List.of(
+                Map.of("stId", "101000005", "rtNm", "143", "arrmsg1", "운행종료", "exps1", "0")));
+
+        var result = service.find("101000005", "서울역", 37.5547, 126.9707, List.of("100100124"), null);
+
+        assertEquals("NO_ARRIVAL", result.status());
+    }
+
+    @Test
+    void readsRemainingStopsFromSeoulMessageOrStationOrder() {
+        assertEquals(2, BusApproachService.seoulArrival("100", "r", "4분12초후[2번째 전]", "252", "20", "17")
+                .orElseThrow().remainingStops());
+        // 문구에 정류장 수가 없으면 정류소 순번 - 버스 구간 순번
+        assertEquals(3, BusApproachService.seoulArrival("100", "r", "곧 도착", "40", "20", "17")
+                .orElseThrow().remainingStops());
+        assertEquals(true, BusApproachService.seoulArrival("100", "r", "출발대기", "0", "20", "0").isEmpty());
+    }
+
+    @Test
+    void doesNotAskTagoAgainForSeoulStop() {
+        stub(NO_NEARBY, ARRIVALS);
+        when(seoul.routeArrivalItems("100100118")).thenReturn(List.of(
+                Map.of("stId", "101000005", "rtNm", "100", "arrmsg1", "4분12초후[2번째 전]", "exps1", "252")));
+
+        service.find("101000005", "서울역", 37.5547, 126.9707, List.of("100100118"), null);
+        service.find("101000005", "서울역", 37.5547, 126.9707, List.of("100100118"), null);
 
         verify(tago, times(1)).nearbyStops(anyDouble(), anyDouble(), anyInt());
     }
