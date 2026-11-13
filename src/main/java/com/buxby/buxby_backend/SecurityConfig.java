@@ -20,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.config.Customizer;
 
 @Configuration
 public class SecurityConfig {
@@ -72,6 +73,8 @@ public class SecurityConfig {
     ) throws Exception {
 
         http
+                .cors(Customizer.withDefaults())
+
                 .securityContext(context -> context
                         .securityContextRepository(contextRepository)
                 )
@@ -90,9 +93,15 @@ public class SecurityConfig {
                                 "/h2-console/**"
                         ).permitAll()
 
-                        .requestMatchers(org.springframework.http.HttpMethod.POST,
-                                "/api/seoul/bus/positions/collect","/api/auth/me",
-                                "/api/seoul/bus/positions/collect-batch").authenticated()
+                        // 현재 로그인 사용자 조회
+                        .requestMatchers("/api/auth/me").authenticated()
+
+                        // 버스 혼잡도 수집은 로그인한 사용자만 허용
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.POST,
+                                "/api/seoul/bus/positions/collect",
+                                "/api/seoul/bus/positions/collect-batch"
+                        ).authenticated()
 
                         .anyRequest().permitAll()
                 )
