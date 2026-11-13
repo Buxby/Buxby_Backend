@@ -90,7 +90,9 @@ public class SecurityConfig {
                                 "/h2-console/**"
                         ).permitAll()
 
-                        .requestMatchers("/api/auth/me").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/seoul/bus/positions/collect","/api/auth/me",
+                                "/api/seoul/bus/positions/collect-batch").authenticated()
 
                         .anyRequest().permitAll()
                 )
@@ -119,7 +121,10 @@ public class SecurityConfig {
                                 "/api/alarm-reservations/**",
                                 "/api/preparation/**",
                                 "/api/route/**",
-                                "/api/bus/**"
+                                "/api/bus/**",
+                                //버스 혼잡도
+                                "/api/seoul/bus/positions/collect",
+                                "/api/seoul/bus/positions/collect-batch"
                         )
                 )
 
