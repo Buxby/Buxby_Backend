@@ -29,7 +29,7 @@ public class SeoulBusPositionService {
     private final RestClient client = RestClient.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
-    @Value("${TAGO_API_KEY}")
+    @Value("${SEOUL_BUS_API_KEY:${TAGO_API_KEY}}")
     private String serviceKey;
 
     // 노선별 운행 차량 위치 및 혼잡도 조회
