@@ -29,11 +29,22 @@ public class SeoulBusPositionService {
     private final RestClient client = RestClient.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
-    @Value("${SEOUL_BUS_API_KEY:${TAGO_API_KEY}}")
+    @Value("${SEOUL_BUS_API_KEY:${TAGO_API_KEY:}}")
     private String serviceKey;
 
     // 노선별 운행 차량 위치 및 혼잡도 조회
     public Map<String, Object> getPositions(String busRouteId) {
+
+        String apiKey = serviceKey == null
+                ? ""
+                : serviceKey.trim();
+
+        if (apiKey.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "서울시 버스 API 인증키가 설정되지 않았습니다."
+            );
+        }
 
         if (busRouteId == null || busRouteId.isBlank()) {
             throw new ResponseStatusException(
@@ -47,7 +58,7 @@ public class SeoulBusPositionService {
             // API 요청 URL 생성
             URI uri = UriComponentsBuilder
                     .fromUriString(BASE_URL)
-                    .queryParam("serviceKey", serviceKey)
+                    .queryParam("serviceKey", apiKey)
                     .queryParam("busRouteId", busRouteId)
                     .build()
                     .encode()
