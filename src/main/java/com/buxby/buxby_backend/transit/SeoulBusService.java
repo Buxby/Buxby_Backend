@@ -21,7 +21,7 @@ public class SeoulBusService {
     private final RestClient client = RestClient.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
-    @Value("${TAGO_API_KEY}")
+    @Value("${TAGO_API_KEY:}")
     private String serviceKey;
 
     public Map<String, Object> getArrival(

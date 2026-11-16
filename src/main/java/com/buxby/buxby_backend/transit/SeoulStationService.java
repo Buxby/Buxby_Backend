@@ -21,7 +21,7 @@ public class SeoulStationService {
     private final RestClient client = RestClient.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
-    @Value("${TAGO_API_KEY}")
+    @Value("${TAGO_API_KEY:}")
     private String serviceKey;
 
     // 1. 정류장 이름 검색

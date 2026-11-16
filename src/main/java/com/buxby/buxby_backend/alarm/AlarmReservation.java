@@ -23,6 +23,10 @@ public class AlarmReservation {
     public LocalDateTime lastAutoCheckedAt;
     public String autoCheckStatus;
     public LocalDateTime scheduleUpdatedAt;
+    // V14: actual device confirmation and inferred boarding result
+    public String transitOutcome; // MISSED / ASSUMED_SUCCESS
+    public LocalDateTime transitOutcomeAt;
+    public Integer learnedBufferMinutes;
 
     protected AlarmReservation() {}
     public AlarmReservation(String userId, String destination, LocalDateTime arrival,

@@ -38,6 +38,9 @@ public class ChatService {
     private final AlarmReservationRepository reservations;
     private final PlaceSearchService places;
     private final HomeLocationRepository homes;
+    private final com.buxby.buxby_backend.alarm.TransitOutcomeService outcomes;
+    private final com.buxby.buxby_backend.alarm.TransitLearningService learning;
+    private final com.buxby.buxby_backend.alarm.MissedBusRouteController reroute;
     private final RestClient restClient = RestClient.create();
     private final String apiKey;
     private final String model;
@@ -50,6 +53,9 @@ public class ChatService {
             AlarmReservationRepository reservations,
             PlaceSearchService places,
             HomeLocationRepository homes,
+            com.buxby.buxby_backend.alarm.TransitOutcomeService outcomes,
+            com.buxby.buxby_backend.alarm.TransitLearningService learning,
+            com.buxby.buxby_backend.alarm.MissedBusRouteController reroute,
             @Value("${gemini.api.key:}") String apiKey,
             @Value("${gemini.model:gemini-2.5-flash}") String model
     ) {
@@ -59,6 +65,9 @@ public class ChatService {
         this.reservations = reservations;
         this.places = places;
         this.homes = homes;
+        this.outcomes = outcomes;
+        this.learning = learning;
+        this.reroute = reroute;
         this.apiKey = apiKey;
         this.model = model;
     }
@@ -89,6 +98,7 @@ public class ChatService {
         Long savedReservationId;
         String resolvedDestination;
         List<PlaceSearchService.Place> destinationCandidates = List.of();
+        Long pendingMissedReservationId;
     }
 
     public ChatResponse chat(ChatController.ChatRequest request, Authentication authentication) {
@@ -118,6 +128,60 @@ public class ChatService {
         // Serialize conversation updates for a single session; another user can't see its state.
         synchronized (session) {
             session.lastUsed = System.currentTimeMillis();
+            // A location reply must finish the pending missed-transit flow before Gemini.
+            if (session.pendingMissedReservationId != null) {
+                if (request.startLongitude() == null || request.startLatitude() == null) {
+                    String reply = "현재 위치를 공유해 줘. 위치를 받으면 대체 경로를 찾아줄게.";
+                    remember(session, request.message(), reply);
+                    return new ChatResponse(sessionId, "LOCATION_REQUIRED", reply,
+                            List.of("startLongitude", "startLatitude"), null, session.pendingMissedReservationId);
+                }
+                Long reservationId = session.pendingMissedReservationId;
+                var routes = reroute.reroute(
+                        new com.buxby.buxby_backend.alarm.MissedBusRouteController.RerouteRequest(
+                                reservationId, request.startLongitude(), request.startLatitude()), authentication);
+                String reply = formatMissedRoutes(routes);
+                if ("ROUTES_FOUND".equals(routes.status())) session.pendingMissedReservationId = null;
+                remember(session, request.message(), reply);
+                return new ChatResponse(sessionId, routes.status().equals("ROUTES_FOUND") ? "REROUTED" : "NO_ROUTE",
+                        reply, List.of(), null, reservationId);
+            }
+            // V14: recognize missed transit directly, without an LLM call.
+            if (isMissedTransit(request.message())) {
+                // Only select reservations that can actually be rerouted.
+                // Old reservations may not contain selectedPathJson.
+                LocalDateTime now = LocalDateTime.now(KOREA);
+                AlarmReservation active = reservations.findByUserIdOrderByDesiredArrivalTimeDesc(userId).stream()
+                        .filter(a -> !"CANCELLED".equals(a.status) && !"FAILED".equals(a.status))
+                        .filter(a -> a.desiredArrivalTime != null
+                                && a.desiredArrivalTime.isAfter(now.minusHours(2)))
+                        .filter(a -> a.selectedPathJson != null
+                                && !a.selectedPathJson.isBlank()
+                                && !"null".equals(a.selectedPathJson.trim()))
+                        .min(java.util.Comparator.comparingLong(a ->
+                                Math.abs(java.time.Duration.between(now, a.desiredArrivalTime).toSeconds())))
+                        .orElse(null);
+                if (active == null) {
+                    String reply = "대체 경로를 검색할 수 있는 최근 예약이 없어. 경로 정보가 저장된 알람을 새로 예약해 줘.";
+                    remember(session, request.message(), reply);
+                    return new ChatResponse(sessionId, "RESERVATION_REQUIRED", reply, List.of("reservationId"), null, null);
+                }
+                outcomes.missed(userId, active.id);
+                if (request.startLongitude() != null && request.startLatitude() != null) {
+                    var routes = reroute.reroute(new com.buxby.buxby_backend.alarm.MissedBusRouteController.RerouteRequest(
+                            active.id, request.startLongitude(), request.startLatitude()), authentication);
+                    String reply = formatMissedRoutes(routes);
+                    remember(session, request.message(), reply);
+                    return new ChatResponse(sessionId, "REROUTED", reply, List.of(), null, active.id);
+                }
+                session.pendingMissedReservationId = active.id;
+                String reply = "놓친 걸 기록했어. 목적지는 " + active.destination
+                        + "이야. 현재 위치를 공유하면 대체 경로를 찾아줄게."
+                        + " (POST /api/missed-bus/reroute, reservationId=" + active.id + ")";
+                remember(session, request.message(), reply);
+                return new ChatResponse(sessionId, "LOCATION_REQUIRED", reply,
+                        List.of("startLongitude", "startLatitude"), null, active.id);
+            }
             updateContext(session, request);
             if (session.startLatitude == null || session.startLongitude == null) {
                 homes.findById(userId).ifPresent(home -> {
@@ -152,7 +216,7 @@ public class ChatService {
                         preview.routeMinutes(),
                         preview.preparationMinutes()
                 );
-                alarm.bufferMinutes = session.bufferMinutes == null ? 5 : session.bufferMinutes;
+                alarm.bufferMinutes = learning.recommendedBuffer(userId, session.bufferMinutes == null ? 5 : session.bufferMinutes);
                 try {
                     Object selectedPath = preview.route() == null ? null : preview.route().get("selectedPath");
                     if (selectedPath != null) alarm.selectedPathJson = mapper.writeValueAsString(selectedPath);
@@ -190,7 +254,7 @@ public class ChatService {
             // Never trust Gemini-generated coordinates. Resolve names via Kakao Places.
             if (session.destination != null && !session.destination.isBlank()
                     && (session.endLatitude == null || session.endLongitude == null
-                        || !session.destination.equals(session.resolvedDestination))) {
+                    || !session.destination.equals(session.resolvedDestination))) {
                 session.endLatitude = null;
                 session.endLongitude = null;
                 session.destinationCandidates = places.search(session.destination);
@@ -255,7 +319,7 @@ public class ChatService {
                             session.endLongitude,
                             session.endLatitude,
                             session.desiredArrivalTime,
-                            session.bufferMinutes,
+                            learning.recommendedBuffer(userId, session.bufferMinutes == null ? 5 : session.bufferMinutes),
                             session.destination,
                             false
                     );
@@ -280,6 +344,29 @@ public class ChatService {
             remember(session, request.message(), text);
             return new ChatResponse(sessionId, "PLANNED", text, List.of(), result, null);
         }
+    }
+
+    private static String formatMissedRoutes(
+            com.buxby.buxby_backend.alarm.MissedBusRouteController.RerouteResponse routes) {
+        if (!"ROUTES_FOUND".equals(routes.status()) || routes.options().isEmpty()) {
+            return "현재 위치에서 대체 경로를 찾지 못했어. 위치를 다시 확인해 줘.";
+        }
+        StringBuilder message = new StringBuilder("대체 경로(실시간 운행 확인 전):\n");
+        for (var option : routes.options()) {
+            message.append(option.optionNumber()).append("번: ").append(option.summary())
+                    .append(" / 약 ").append(option.travelMinutes()).append("분\n");
+        }
+        return message.append("실제 운행 여부와 탑승 가능 시간은 별도 확인이 필요해.").toString();
+    }
+
+    private static boolean isMissedTransit(String text) {
+        if (text == null) return false;
+        String normalized = text.replace(" ", "").toLowerCase(java.util.Locale.ROOT);
+        boolean transit = normalized.contains("버스") || normalized.contains("지하철")
+                || normalized.contains("전철") || normalized.contains("열차");
+        boolean missed = normalized.contains("놓쳤") || normalized.contains("놓침")
+                || normalized.contains("못탔") || normalized.contains("못탐");
+        return transit && missed;
     }
 
     private static String contextKey(Session s) {

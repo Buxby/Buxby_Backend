@@ -131,6 +131,9 @@ public class SecurityConfig {
                                 "/api/alarm-sync/**",
 
                                 "/api/preparation/**",
+                                "/api/missed-bus",
+                                "/api/missed-bus/**",
+                                "/api/transit-outcomes/**",
                                 "/api/route/**",
                                 "/api/bus/**",
                                 "/api/seoul/bus/positions/collect",

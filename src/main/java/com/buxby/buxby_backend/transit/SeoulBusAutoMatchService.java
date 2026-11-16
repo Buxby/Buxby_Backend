@@ -25,7 +25,7 @@ public class SeoulBusAutoMatchService {
     private final RestClient client = RestClient.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
-    @Value("${TAGO_API_KEY}")
+    @Value("${TAGO_API_KEY:}")
     private String serviceKey;
 
     public SeoulBusAutoMatchService(OdsayRouteService odsay) {
