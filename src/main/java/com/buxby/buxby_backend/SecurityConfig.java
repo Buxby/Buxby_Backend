@@ -68,7 +68,6 @@ public class SecurityConfig {
             HttpSecurity http,
             SecurityContextRepository contextRepository,
             CustomOAuth2UserService customOAuth2UserService,
-            // 간편 로그인 후 돌아갈 프론트 주소 (배포 시 FRONTEND_URL)
             @Value("${app.frontend-url}") String frontendUrl
     ) throws Exception {
 
@@ -93,10 +92,8 @@ public class SecurityConfig {
                                 "/h2-console/**"
                         ).permitAll()
 
-                        // 현재 로그인 사용자 조회
                         .requestMatchers("/api/auth/me").authenticated()
 
-                        // 버스 혼잡도 수집은 로그인한 사용자만 허용
                         .requestMatchers(
                                 org.springframework.http.HttpMethod.POST,
                                 "/api/seoul/bus/positions/collect",
@@ -121,17 +118,21 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/logout",
 
-                                // Buxby AI / 교통정보 / 알람 API
                                 "/api/ai/**",
                                 "/api/journey/**",
                                 "/api/alarm/**",
                                 "/api/alarms/**",
                                 "/api/alarm-reservations",
                                 "/api/alarm-reservations/**",
+
+                                // V11 신규 API
+                                "/api/alarm-operations/**",
+                                "/api/alarm-sync",
+                                "/api/alarm-sync/**",
+
                                 "/api/preparation/**",
                                 "/api/route/**",
                                 "/api/bus/**",
-                                //버스 혼잡도
                                 "/api/seoul/bus/positions/collect",
                                 "/api/seoul/bus/positions/collect-batch"
                         )
@@ -143,21 +144,17 @@ public class SecurityConfig {
 
                 .formLogin(form -> form.disable())
 
-                // 소셜 로그인 (Kakao, Google, Naver)
                 .oauth2Login(oauth -> oauth
-
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)
                         )
 
-                        // 로그인 성공
                         .successHandler((request, response, authentication) -> {
                             response.sendRedirect(
                                     frontendUrl + "/?socialLogin=success"
                             );
                         })
 
-                        // 로그인 실패
                         .failureHandler((request, response, exception) -> {
                             exception.printStackTrace();
 
@@ -167,7 +164,6 @@ public class SecurityConfig {
                         })
                 )
 
-                // 로그아웃
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
                         .invalidateHttpSession(true)
