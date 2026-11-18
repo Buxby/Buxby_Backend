@@ -1,6 +1,8 @@
 package com.buxby.buxby_backend.alarm;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,7 +20,8 @@ public class AlarmReservation {
     @Column(nullable = false) public String status = "PENDING_CLIENT";
 
     // New nullable columns: old reservations remain readable.
-    @Lob @Column(columnDefinition = "CLOB") public String selectedPathJson;
+    // DB에 맞는 긴 문자열 타입을 쓴다 (PostgreSQL에는 CLOB 타입이 없다)
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) public String selectedPathJson;
     public Integer bufferMinutes;
     public LocalDateTime lastAutoCheckedAt;
     public String autoCheckStatus;

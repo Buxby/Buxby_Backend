@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -19,7 +20,7 @@ import java.util.Map;
 @Service
 public class TagoService {
 
-    private final RestClient client = RestClient.create();
+    private final RestClient client = HttpClients.create();
     private final ObjectMapper mapper;
     private final String key;
 

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -22,7 +23,7 @@ public class SeoulBusAutoMatchService {
             "http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRouteAll";
 
     private final OdsayRouteService odsay;
-    private final RestClient client = RestClient.create();
+    private final RestClient client = HttpClients.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
     @Value("${TAGO_API_KEY:}")

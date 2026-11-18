@@ -10,4 +10,7 @@ public interface AlarmReservationRepository extends JpaRepository<AlarmReservati
     Optional<AlarmReservation> findByIdAndUserId(Long id, String userId);
     List<AlarmReservation> findByDesiredArrivalTimeAfterOrderByDesiredArrivalTimeAsc(
             java.time.LocalDateTime time);
+    // 도착시간이 지났는데 아직 이동 결과가 기록되지 않은 예약 (이동 결과 추정 스케줄러용)
+    List<AlarmReservation> findByStatusAndTransitOutcomeIsNullAndDesiredArrivalTimeBefore(
+            String status, java.time.LocalDateTime time);
 }

@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,7 +42,7 @@ public class ChatService {
     private final com.buxby.buxby_backend.alarm.TransitOutcomeService outcomes;
     private final com.buxby.buxby_backend.alarm.TransitLearningService learning;
     private final com.buxby.buxby_backend.alarm.MissedBusRouteController reroute;
-    private final RestClient restClient = RestClient.create();
+    private final RestClient restClient = HttpClients.create(HttpClients.AI_READ_TIMEOUT);
     private final String apiKey;
     private final String model;
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();

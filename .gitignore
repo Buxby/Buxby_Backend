@@ -43,3 +43,7 @@ out/
 application-local.properties
 application-local.yml
 application-local.yaml
+### Local H2 Database (jdbc:h2:file:./data/buxby) ###
+/data/
+*.mv.db
+*.trace.db

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,7 +22,7 @@ import java.util.Map;
 public class GeminiService {
 
     private final ObjectMapper mapper;
-    private final RestClient client = RestClient.create();
+    private final RestClient client = HttpClients.create(HttpClients.AI_READ_TIMEOUT);
     private final String key;
     private final String model;
 
