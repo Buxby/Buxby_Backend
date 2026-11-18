@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -26,7 +27,7 @@ public class SeoulBusPositionService {
     private static final String BASE_URL =
             "http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid";
 
-    private final RestClient client = RestClient.create();
+    private final RestClient client = HttpClients.create();
     private final XmlMapper xmlMapper = new XmlMapper();
 
     @Value("${SEOUL_BUS_API_KEY:${TAGO_API_KEY:}}")

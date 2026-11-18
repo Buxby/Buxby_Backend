@@ -15,9 +15,11 @@ public class TransitOutcomeScheduler {
     @Scheduled(fixedDelay = 60000)
     public void inferCompletedTrips() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(30);
-        for (AlarmReservation a : reservations.findAll()) {
-            if (a.desiredArrivalTime.isBefore(cutoff) && a.transitOutcome == null)
-                outcomes.assumeSuccess(a);
+        // 전체 예약(findAll)을 매분 읽지 않고, 처리할 예약만 조회한다.
+        // assumeSuccess도 SCHEDULED 상태만 기록하므로 같은 조건이다.
+        for (AlarmReservation a : reservations
+                .findByStatusAndTransitOutcomeIsNullAndDesiredArrivalTimeBefore("SCHEDULED", cutoff)) {
+            outcomes.assumeSuccess(a);
         }
     }
 }

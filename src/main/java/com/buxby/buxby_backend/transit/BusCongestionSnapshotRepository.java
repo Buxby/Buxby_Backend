@@ -2,7 +2,11 @@
 package com.buxby.buxby_backend.transit;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface BusCongestionSnapshotRepository
@@ -20,4 +24,9 @@ public interface BusCongestionSnapshotRepository
             String busRouteId,
             String vehicleId
     );
+
+    // 기준 시각보다 오래된 기록 일괄 삭제 (한 건씩 지우지 않고 delete 쿼리 한 번)
+    @Modifying
+    @Query("delete from BusCongestionSnapshot s where s.collectedAt < :cutoff")
+    int deleteCollectedBefore(@Param("cutoff") LocalDateTime cutoff);
 }

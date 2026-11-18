@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import com.buxby.buxby_backend.HttpClients;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
@@ -34,7 +35,7 @@ public class SeoulSubwayService {
     private static final DateTimeFormatter SOURCE_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final RestClient client = RestClient.create();
+    private final RestClient client = HttpClients.create();
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
