@@ -13,27 +13,38 @@ import java.util.Map;
 public class JourneyTimeEstimator {
     public record TimeEstimate(int minMinutes, int maxMinutes, String reliability, String explanation) {}
 
-    // 대중교통 한 구간에서 기다릴 수 있는 최대 시간. 배차 간격이 아주 긴 노선(시외·농어촌)도
-    // 알람이 지나치게 앞당겨지지 않도록 상한을 둔다. 배차 간격 정보가 없으면 기본값을 쓴다.
-    public static final int MAX_WAIT_PER_LEG = 30;
-    public static final int DEFAULT_WAIT_PER_LEG = 5;
+    // 배차 간격 상한(시외·농어촌처럼 아주 긴 노선도 알람이 지나치게 앞당겨지지 않게)과
+    // 간격 정보가 없을 때 쓰는 기본값(분)
+    public static final int MAX_HEADWAY = 30;
+    public static final int DEFAULT_HEADWAY = 10;
+    // 표준정규분포 90% 지점: 10번 중 9번은 이 대기 시간 안에 탄다
+    private static final double Z90 = 1.2816;
+
+    /** 구간별 대기 시간 요약: 평균(보통)과 90% 지점(늦을 때), 단위 분 */
+    public record Wait(int expected, int p90) {}
 
     /**
      * ODsay totalTime은 탑승·도보 시간의 합이고 버스·지하철을 기다리는 시간은 들어 있지 않다.
-     * 그래서 최소 = totalTime, 최대 = totalTime + 구간별 배차 간격(intervalTime) 합으로 잡는다.
-     * (프론트 src/lib/routes.js의 최대 소요 시간과 같은 규칙)
+     * 정류장에 아무 때나 도착하면 대기 시간은 0~배차 간격(H) 사이에 고르게 퍼지므로
+     * 구간별 평균 H/2, 분산 H²/12를 더해
+     *   보통(min) = totalTime + 평균 대기 합
+     *   늦을 때(max) = totalTime + 평균 대기 합 + 1.28 × 표준편차 (90% 지점, 알람 기준)
+     * 으로 잡는다. 모든 구간에서 최대로 기다리는 경우를 더하면 지나치게 길어진다.
+     * (프론트 src/lib/routes.js와 같은 규칙)
      */
     public TimeEstimate estimate(JsonNode path) {
         int total = path.path("info").path("totalTime").asInt(-1);
         if (total <= 0) throw new IllegalArgumentException("ODsay 이동시간 정보가 없습니다.");
-        int waitMargin = waitMargin(path, false);
-        return new TimeEstimate(total, total + waitMargin, "ESTIMATED",
-                "ODsay 탑승·도보 시간에 구간별 배차 간격만큼의 최대 대기 시간을 더한 추정치입니다.");
+        Wait wait = waitFor(path, false);
+        return new TimeEstimate(total + wait.expected(), total + wait.p90(), "ESTIMATED",
+                "ODsay 탑승·도보 시간에 배차 간격으로 계산한 대기 시간(보통·90%)을 더한 추정치입니다.");
     }
 
-    /** 대중교통 구간별 최대 대기 시간 합. skipFirstLeg면 첫 탑승 대기(실시간으로 확인된 경우)는 뺀다. */
-    public static int waitMargin(JsonNode path, boolean skipFirstLeg) {
-        int sum = 0;
+    /** 대중교통 구간별 대기 시간. skipFirstLeg면 첫 탑승 대기(실시간으로 확인된 경우)는 뺀다. */
+    public static Wait waitFor(JsonNode path, boolean skipFirstLeg) {
+        double mean = 0;
+        double variance = 0;
+        int worst = 0;
         boolean first = true;
         for (JsonNode section : path.path("subPath")) {
             int type = section.path("trafficType").asInt();
@@ -44,9 +55,14 @@ public class JourneyTimeEstimator {
             }
             first = false;
             int interval = section.path("intervalTime").asInt(0);
-            sum += interval > 0 ? Math.min(interval, MAX_WAIT_PER_LEG) : DEFAULT_WAIT_PER_LEG;
+            int headway = interval > 0 ? Math.min(interval, MAX_HEADWAY) : DEFAULT_HEADWAY;
+            mean += headway / 2.0;
+            variance += headway * (double) headway / 12.0;
+            worst += headway;
         }
-        return sum;
+        int expected = (int) Math.round(mean);
+        int p90 = (int) Math.min(worst, Math.round(mean + Z90 * Math.sqrt(variance)));
+        return new Wait(expected, Math.max(expected, p90));
     }
 
     public Map<String, Object> matchSubway(JsonNode section, Map<String, Object> response) {
@@ -134,14 +150,14 @@ public class JourneyTimeEstimator {
         int actualWait = (int) Math.ceil(waitSeconds / 60.0);
         int adjusted = Math.max(1, total - residualWait + actualWait);
         // 첫 탑승 대기는 실시간으로 확인했으니 환승 구간의 대기만 남긴다
-        int uncertainty = waitMargin(path, true);
+        Wait rest = waitFor(path, true);
         live.put("status", "REALTIME_APPLIED");
         live.put("matchedArrivalSeconds", waitSeconds + walkMinutes * 60);
         live.put("walkingToBoardingMinutes", walkMinutes);
         live.put("estimatedPlatformWaitMinutes", actualWait);
         live.put("replacedOdsayResidualMinutes", residualWait);
         live.put("message", "확인된 열차 대기시간으로 ODsay 잔여 대기시간을 대체한 참고 추정치입니다.");
-        return new TimeEstimate(adjusted, adjusted + uncertainty, "REALTIME_PARTIAL",
+        return new TimeEstimate(adjusted + rest.expected(), adjusted + rest.p90(), "REALTIME_PARTIAL",
                 "지하철 첫 탑승 대기시간만 실시간 보정했습니다.");
     }
 
@@ -194,8 +210,9 @@ public class JourneyTimeEstimator {
             live.put("walkingToStopMinutes", walkingMinutes);
             live.put("estimatedStopWaitMinutes", actualWait);
             live.put("odsayResidualMinutes", residual);
-            live.put("scenarioMinMinutes", scenario);
-            live.put("scenarioMaxMinutes", scenario + waitMargin(path, true));
+            Wait rest = waitFor(path, true);
+            live.put("scenarioMinMinutes", scenario + rest.expected());
+            live.put("scenarioMaxMinutes", scenario + rest.p90());
             live.put("scenarioAssumption", "ODsay 구간별 sectionTime에 버스 대기시간이 포함되지 않았다고 가정");
             live.put("message", "실시간 버스 도착정보로 참고 시나리오를 계산했습니다. ODsay 대기시간 중복 여부가 불확실하여 기본 추정치는 유지합니다.");
             return baseline;
@@ -208,8 +225,8 @@ public class JourneyTimeEstimator {
         live.put("estimatedStopWaitMinutes", actualWait);
         live.put("replacedOdsayResidualMinutes", residual);
         live.put("message", "첫 버스 대기시간을 반영한 참고 추정치입니다. 교통 지연은 별도 반영되지 않습니다.");
-        int uncertainty = waitMargin(path, true);
-        return new TimeEstimate(adjusted, adjusted + uncertainty, "REALTIME_PARTIAL",
+        Wait rest = waitFor(path, true);
+        return new TimeEstimate(adjusted + rest.expected(), adjusted + rest.p90(), "REALTIME_PARTIAL",
                 "첫 버스 도착정보로 대기시간만 보정한 추정치입니다.");
     }
 
