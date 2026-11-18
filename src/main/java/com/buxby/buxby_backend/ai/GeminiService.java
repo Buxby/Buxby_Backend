@@ -4,15 +4,10 @@ package com.buxby.buxby_backend.ai;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import com.buxby.buxby_backend.HttpClients;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -22,23 +17,16 @@ import java.util.Map;
 public class GeminiService {
 
     private final ObjectMapper mapper;
-    private final RestClient client = HttpClients.create(HttpClients.AI_READ_TIMEOUT);
-    private final String key;
-    private final String model;
+    private final GeminiClient gemini;
 
-    public GeminiService(
-            ObjectMapper mapper,
-            @Value("${gemini.api.key:}") String key,
-            @Value("${gemini.model:gemini-3.5-flash}") String model
-    ) {
+    public GeminiService(ObjectMapper mapper, GeminiClient gemini) {
         this.mapper = mapper;
-        this.key = key;
-        this.model = model;
+        this.gemini = gemini;
     }
 
     public Map<String, Object> interpret(String message) {
 
-        if (key.isBlank()) {
+        if (!gemini.configured()) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "GEMINI_API_KEY 환경변수를 설정하세요."
@@ -62,11 +50,6 @@ public class GeminiService {
                         "사용자: " + message;
 
         try {
-            URI uri = URI.create(
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                            + model + ":generateContent"
-            );
-
             Map<String, Object> body = Map.of(
                     "contents", List.of(
                             Map.of(
@@ -80,23 +63,8 @@ public class GeminiService {
                     )
             );
 
-            String raw = client.post()
-                    .uri(uri)
-                    .header("x-goog-api-key", key)
-                    .body(body)
-                    .retrieve()
-                    .body(String.class);
-
-            JsonNode response = mapper.readTree(raw);
-
-            String text = response
-                    .path("candidates")
-                    .path(0)
-                    .path("content")
-                    .path("parts")
-                    .path(0)
-                    .path("text")
-                    .asText("");
+            // 기본 모델이 혼잡하면 GeminiClient가 대체 모델로 넘어간다
+            String text = gemini.generateText(body);
 
             if (text.isBlank()) {
                 throw new ResponseStatusException(
@@ -117,21 +85,6 @@ public class GeminiService {
             return mapper.convertValue(
                     result,
                     new TypeReference<Map<String, Object>>() {}
-            );
-
-        } catch (RestClientResponseException e) {
-
-            System.err.println(
-                    "[Gemini] HTTP 오류 코드: " + e.getStatusCode()
-            );
-            System.err.println(
-                    "[Gemini] 오류 응답: " + e.getResponseBodyAsString()
-            );
-
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Gemini API 요청 실패 (서버 로그 확인)",
-                    e
             );
 
         } catch (ResponseStatusException e) {

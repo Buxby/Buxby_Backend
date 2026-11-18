@@ -18,8 +18,8 @@ public final class HttpClients {
     /** 교통 API처럼 금방 응답해야 하는 호출 */
     public static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
 
-    /** 응답 생성에 시간이 걸리는 AI 호출 (Gemini는 혼잡할 때 수십 초 걸린다) */
-    public static final Duration AI_READ_TIMEOUT = Duration.ofSeconds(60);
+    /** AI 호출. 혼잡해 늦으면 GeminiClient가 대체 모델로 넘어가므로 한 번에 너무 오래 기다리지 않는다 */
+    public static final Duration AI_READ_TIMEOUT = Duration.ofSeconds(25);
 
     private HttpClients() {
     }
