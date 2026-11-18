@@ -58,7 +58,7 @@ public class ChatService {
             com.buxby.buxby_backend.alarm.TransitLearningService learning,
             com.buxby.buxby_backend.alarm.MissedBusRouteController reroute,
             @Value("${gemini.api.key:}") String apiKey,
-            @Value("${gemini.model:gemini-2.5-flash}") String model
+            @Value("${gemini.model:gemini-3.5-flash}") String model
     ) {
         this.mapper = mapper;
         this.currentUser = currentUser;
@@ -177,8 +177,7 @@ public class ChatService {
                 }
                 session.pendingMissedReservationId = active.id;
                 String reply = "놓친 걸 기록했어. 목적지는 " + active.destination
-                        + "이야. 현재 위치를 공유하면 대체 경로를 찾아줄게."
-                        + " (POST /api/missed-bus/reroute, reservationId=" + active.id + ")";
+                        + "이야. 현재 위치를 공유하면 대체 경로를 찾아줄게.";
                 remember(session, request.message(), reply);
                 return new ChatResponse(sessionId, "LOCATION_REQUIRED", reply,
                         List.of("startLongitude", "startLatitude"), null, active.id);
@@ -229,7 +228,7 @@ public class ChatService {
                 session.savedReservationId = saved.id;
                 String reply = "알람 예약 " + saved.id + "번을 저장했어. "
                         + preview.wakeTime() + "에 일어나고 " + preview.leaveHomeTime()
-                        + "에 출발하면 돼. 실제 알람은 갤럭시 앱에서 설정해야 해.";
+                        + "에 출발하면 돼. 앱 알람으로 사용하면 그 시각에 깨워 줄게.";
                 remember(session, request.message(), reply);
                 return new ChatResponse(sessionId, "RESERVED", reply, List.of(), preview, saved.id);
             }
@@ -306,7 +305,7 @@ public class ChatService {
                 String question = missing.contains("desiredArrivalTime")
                         ? "도착하고 싶은 날짜와 시간을 알려줘."
                         : missing.contains("homeLocation")
-                        ? "먼저 집 위치를 등록해 줘. POST /api/ai/home에서 장소명을 입력하면 돼."
+                        ? "먼저 출발 위치(집)를 알려줘. 홈 화면에서 출발 위치를 정하면 돼."
                         : "목적지 이름을 알려줘.";
                 remember(session, request.message(), question);
                 return new ChatResponse(sessionId, "NEEDS_INFO", question, missing, null, null);
@@ -341,7 +340,7 @@ public class ChatService {
                     + result.preparationMinutes() + "분 기준으로 "
                     + result.leaveHomeTime() + "에 출발하고 "
                     + result.wakeTime() + "에 일어나면 돼. "
-                    + "아직 알람은 저장하지 않았어. 확인 후 confirmReservation=true로 저장할 수 있어.";
+                    + "아직 알람은 저장하지 않았어. 확인하고 저장해 줘.";
             remember(session, request.message(), text);
             return new ChatResponse(sessionId, "PLANNED", text, List.of(), result, null);
         }

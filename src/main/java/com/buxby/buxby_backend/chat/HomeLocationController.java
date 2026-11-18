@@ -31,7 +31,7 @@ public class HomeLocationController {
             for (var p : found) if (p.address().equals(req.selectedAddress())) { chosen = p; break; }
             if (chosen == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검색 결과에 없는 주소입니다.");
         } else if (found.size() == 1) chosen = found.get(0);
-        if (chosen == null) return new HomeResponse("SELECT_PLACE", "집 주소가 여러 개야. selectedAddress로 하나를 선택해 줘.", null, null, null, found);
+        if (chosen == null) return new HomeResponse("SELECT_PLACE", "집 주소가 여러 개야. 하나를 선택해 줘.", null, null, null, found);
         homes.save(new HomeLocation(userId, chosen.name(), chosen.latitude(), chosen.longitude()));
         return new HomeResponse("SAVED", "기본 출발지를 저장했어.", chosen.name(), chosen.latitude(), chosen.longitude(), List.of());
     }
