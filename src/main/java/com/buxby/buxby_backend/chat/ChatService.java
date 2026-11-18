@@ -6,16 +6,11 @@ import com.buxby.buxby_backend.alarm.AlarmReservationRepository;
 import com.buxby.buxby_backend.auth.CurrentUserService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
-import com.buxby.buxby_backend.HttpClients;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayDeque;
@@ -42,9 +37,7 @@ public class ChatService {
     private final com.buxby.buxby_backend.alarm.TransitOutcomeService outcomes;
     private final com.buxby.buxby_backend.alarm.TransitLearningService learning;
     private final com.buxby.buxby_backend.alarm.MissedBusRouteController reroute;
-    private final RestClient restClient = HttpClients.create(HttpClients.AI_READ_TIMEOUT);
-    private final String apiKey;
-    private final String model;
+    private final com.buxby.buxby_backend.ai.GeminiClient gemini;
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
     public ChatService(
@@ -57,8 +50,7 @@ public class ChatService {
             com.buxby.buxby_backend.alarm.TransitOutcomeService outcomes,
             com.buxby.buxby_backend.alarm.TransitLearningService learning,
             com.buxby.buxby_backend.alarm.MissedBusRouteController reroute,
-            @Value("${gemini.api.key:}") String apiKey,
-            @Value("${gemini.model:gemini-3.5-flash}") String model
+            com.buxby.buxby_backend.ai.GeminiClient gemini
     ) {
         this.mapper = mapper;
         this.currentUser = currentUser;
@@ -69,8 +61,7 @@ public class ChatService {
         this.outcomes = outcomes;
         this.learning = learning;
         this.reroute = reroute;
-        this.apiKey = apiKey;
-        this.model = model;
+        this.gemini = gemini;
     }
 
     public record ChatResponse(
@@ -104,7 +95,7 @@ public class ChatService {
 
     public ChatResponse chat(ChatController.ChatRequest request, Authentication authentication) {
         String userId = currentUser.requireUserId(authentication);
-        if (apiKey.isBlank()) {
+        if (!gemini.configured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GEMINI_API_KEY가 필요합니다.");
         }
         if (sessions.size() > 1000) {
@@ -409,23 +400,12 @@ public class ChatService {
         body.put("systemInstruction", Map.of("parts", List.of(Map.of("text", instruction))));
         body.put("contents", contents);
         body.put("generationConfig", Map.of("responseMimeType", "application/json"));
-        URI uri = URI.create("https://generativelanguage.googleapis.com/v1beta/models/"
-                + model + ":generateContent");
+        // 기본 모델이 혼잡하면 GeminiClient가 대체 모델로 넘어간다
+        String responseText = gemini.generateText(body);
         try {
-            String raw = restClient.post().uri(uri)
-                    .header("x-goog-api-key", apiKey)
-                    .body(body).retrieve().body(String.class);
-            JsonNode root = mapper.readTree(raw);
-            String responseText = root.path("candidates").path(0).path("content")
-                    .path("parts").path(0).path("text").asText("");
-            if (responseText.isBlank()) throw new IllegalStateException("Gemini empty response");
             JsonNode parsed = mapper.readTree(responseText);
             if (!parsed.isObject()) throw new IllegalStateException("Gemini invalid JSON");
             return parsed;
-        } catch (RestClientResponseException e) {
-            // Do not echo provider responses: they may include implementation details.
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Gemini API 요청에 실패했습니다 (HTTP " + e.getStatusCode().value() + ").", e);
         } catch (ResponseStatusException e) {
             throw e;
         } catch (Exception e) {
