@@ -406,6 +406,7 @@ public class SeoulSubwayService {
             case "1081" -> "경강선";
             case "1092" -> "우이신설선";
             case "1093" -> "서해선";
+            case "1094" -> "신림선";
             case "1032" -> "GTX-A";
             default -> subwayId;
         };
