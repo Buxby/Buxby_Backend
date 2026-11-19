@@ -1,6 +1,7 @@
 
 package com.buxby.buxby_backend;
 
+import com.buxby.buxby_backend.auth.AppLoginController;
 import com.buxby.buxby_backend.auth.CustomOAuth2UserService;
 import com.buxby.buxby_backend.user.AppUserRepository;
 
@@ -68,6 +69,7 @@ public class SecurityConfig {
             HttpSecurity http,
             SecurityContextRepository contextRepository,
             CustomOAuth2UserService customOAuth2UserService,
+            AppLoginController appLogin,
             @Value("${app.frontend-url}") String frontendUrl
     ) throws Exception {
 
@@ -83,6 +85,7 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/api/auth/signup",
                                 "/api/auth/login",
+                                "/api/auth/app/**",
                                 "/oauth2/**",
                                 "/login/oauth2/**",
                                 "/swagger-ui.html",
@@ -117,6 +120,7 @@ public class SecurityConfig {
                                 "/api/auth/signup",
                                 "/api/auth/login",
                                 "/api/auth/logout",
+                                "/api/auth/app/**",
 
                                 "/api/ai/**",
                                 "/api/journey/**",
@@ -152,17 +156,28 @@ public class SecurityConfig {
                                 .userService(customOAuth2UserService)
                         )
 
+                        // 앱에서 시작한 로그인이면 일회용 코드를 붙여 앱(buxby://)으로 돌려보낸다
                         .successHandler((request, response, authentication) -> {
+                            String appRedirect =
+                                    appLogin.successRedirect(request, authentication);
+
                             response.sendRedirect(
-                                    frontendUrl + "/?socialLogin=success"
+                                    appRedirect != null
+                                            ? appRedirect
+                                            : frontendUrl + "/?socialLogin=success"
                             );
                         })
 
                         .failureHandler((request, response, exception) -> {
                             exception.printStackTrace();
 
+                            String appRedirect =
+                                    appLogin.failureRedirect(request);
+
                             response.sendRedirect(
-                                    frontendUrl + "/?socialLogin=failed"
+                                    appRedirect != null
+                                            ? appRedirect
+                                            : frontendUrl + "/?socialLogin=failed"
                             );
                         })
                 )
