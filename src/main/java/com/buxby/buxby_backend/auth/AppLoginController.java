@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -22,15 +23,23 @@ import org.springframework.web.bind.annotation.*;
 // 앱(React Native) 간편 로그인
 // 1) 앱이 시스템 브라우저로 GET /api/auth/app/social/{provider}?redirect_uri=buxby://auth 를 연다
 //    (웹과 같은 주소 https://buxby.vercel.app 에서 시작해야 소셜 콜백 주소·브라우저 세션이 맞는다)
-// 2) 돌아올 앱 주소를 브라우저 세션에 적어 두고, 기존 /oauth2/authorization/{provider} 흐름으로 보낸다
+// 2) 돌아올 앱 주소를 "시작 대기"로 브라우저 세션에 적고, 기존 /oauth2/authorization/{provider} 흐름으로 보낸다
+//    AppLoginStartFilter가 바로 이어지는 그 요청에서만 대기 값을 "앱 주소"로 확정한다.
+//    웹에서 시작한 로그인은 대기 값이 없으므로, 전에 앱 로그인을 중간에 그만둬 남은 앱 주소를 지운다
 // 3) 로그인이 끝나면 SecurityConfig 성공 처리기가 앱 주소로 일회용 코드를 붙여 보낸다
 // 4) 앱이 POST /api/auth/app/exchange 로 코드를 내면 앱 쪽 세션(JSESSIONID)을 만들어 준다
 @RestController
 @RequestMapping("/api/auth/app")
 public class AppLoginController {
 
-    // 브라우저 세션에 적어 두는 "로그인이 끝나면 돌아갈 앱 주소"
+    // 브라우저 세션에 적어 두는 "로그인이 끝나면 돌아갈 앱 주소" (AppLoginStartFilter가 확정)
     public static final String REDIRECT_ATTRIBUTE = "APP_LOGIN_REDIRECT";
+
+    // 앱 시작 주소가 적어 두는 대기 값. 바로 이어지는 /oauth2/authorization 요청에서만 쓴다
+    public static final String PENDING_ATTRIBUTE = "APP_LOGIN_PENDING";
+
+    // 세션에 넣는 값이라 Serializable (세션 저장소를 바꿔도 깨지지 않게)
+    public record PendingLogin(String provider, long startedAtMillis, String redirectUri) implements Serializable {}
 
     private static final Set<String> PROVIDERS = Set.of("kakao", "naver", "google");
 
@@ -73,7 +82,13 @@ public class AppLoginController {
             response.sendError(HttpStatus.BAD_REQUEST.value(), "허용되지 않은 앱 주소입니다.");
             return;
         }
-        request.getSession(true).setAttribute(REDIRECT_ATTRIBUTE, redirectUri);
+        HttpSession session = request.getSession(true);
+        // 이전에 확정된 앱 주소는 버리고, 이번 시작만 대기로 적는다
+        session.removeAttribute(REDIRECT_ATTRIBUTE);
+        session.setAttribute(
+                PENDING_ATTRIBUTE,
+                new PendingLogin(provider, System.currentTimeMillis(), redirectUri)
+        );
         response.sendRedirect("/oauth2/authorization/" + provider);
     }
 

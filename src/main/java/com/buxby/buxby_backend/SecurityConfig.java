@@ -2,6 +2,7 @@
 package com.buxby.buxby_backend;
 
 import com.buxby.buxby_backend.auth.AppLoginController;
+import com.buxby.buxby_backend.auth.AppLoginStartFilter;
 import com.buxby.buxby_backend.auth.CustomOAuth2UserService;
 import com.buxby.buxby_backend.user.AppUserRepository;
 
@@ -19,6 +20,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.config.Customizer;
@@ -150,6 +152,12 @@ public class SecurityConfig {
                 )
 
                 .formLogin(form -> form.disable())
+
+                // 소셜 로그인 시작 시 앱 로그인인지 정한다 (웹 로그인이면 남은 앱 주소를 지움)
+                .addFilterBefore(
+                        new AppLoginStartFilter(),
+                        OAuth2AuthorizationRequestRedirectFilter.class
+                )
 
                 .oauth2Login(oauth -> oauth
                         .userInfoEndpoint(userInfo -> userInfo
