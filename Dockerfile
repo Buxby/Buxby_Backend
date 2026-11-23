@@ -3,7 +3,8 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
-RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null
+# build.gradle이 바뀔 때만 라이브러리 jar를 받는다 (src만 바뀐 커밋은 이 층을 캐시에서 쓴다)
+RUN chmod +x gradlew && ./gradlew --no-daemon downloadDependencies
 COPY src ./src
 RUN ./gradlew --no-daemon bootJar -x test
 
