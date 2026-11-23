@@ -20,15 +20,18 @@ public class BusCongestionSnapshotService {
 
     private final SeoulBusPositionService positionService;
     private final GyeonggiBusPositionService gyeonggiPositionService;
+    private final IncheonBusPositionService incheonPositionService;
     private final BusCongestionSnapshotRepository repository;
 
     public BusCongestionSnapshotService(
             SeoulBusPositionService positionService,
             GyeonggiBusPositionService gyeonggiPositionService,
+            IncheonBusPositionService incheonPositionService,
             BusCongestionSnapshotRepository repository
     ) {
         this.positionService = positionService;
         this.gyeonggiPositionService = gyeonggiPositionService;
+        this.incheonPositionService = incheonPositionService;
         this.repository = repository;
     }
 
@@ -87,6 +90,10 @@ public class BusCongestionSnapshotService {
             case "GYEONGGI" ->
                     apiResponse =
                             gyeonggiPositionService.getPositions(busRouteId);
+
+            case "INCHEON" ->
+                    apiResponse =
+                            incheonPositionService.getPositions(busRouteId);
 
             default ->
                     throw new ResponseStatusException(
@@ -183,6 +190,25 @@ public class BusCongestionSnapshotService {
 
             snapshot.stationSequence =
                     getText(vehicle, "stationSequence");
+
+            // 인천 버스 정보
+            snapshot.currentStationName =
+                    getText(vehicle, "currentStationName");
+
+            snapshot.directionCode =
+                    getText(vehicle, "directionCode");
+
+            snapshot.direction =
+                    getText(vehicle, "direction");
+
+            snapshot.nodeSequence =
+                    getText(vehicle, "nodeSequence");
+
+            snapshot.lastBusCode =
+                    getText(vehicle, "lastBusCode");
+
+            snapshot.lastBus =
+                    getText(vehicle, "lastBus");
 
             snapshot.vehicleStateCode =
                     getText(vehicle, "vehicleStateCode");
@@ -477,6 +503,12 @@ public class BusCongestionSnapshotService {
                                 new LinkedHashMap<>();
 
                         vehicle.put("id", snapshot.id);
+
+                        // 차량이 소속된 버스 노선 정보
+                        vehicle.put("busNo", snapshot.busNo);
+                        vehicle.put("busRouteId", snapshot.busRouteId);
+
+                        // 지역 정보
                         vehicle.put("provider", snapshot.provider);
                         vehicle.put("busCityCode", snapshot.busCityCode);
 
@@ -496,6 +528,17 @@ public class BusCongestionSnapshotService {
                         vehicle.put("stationSequence", snapshot.stationSequence);
                         vehicle.put("vehicleStateCode", snapshot.vehicleStateCode);
                         vehicle.put("vehicleState", snapshot.vehicleState);
+
+                        // 인천 버스 추가 정보
+                        vehicle.put("currentStationName", snapshot.currentStationName);
+
+                        vehicle.put("directionCode", snapshot.directionCode);
+                        vehicle.put("direction", snapshot.direction);
+
+                        vehicle.put("nodeSequence", snapshot.nodeSequence);
+
+                        vehicle.put("lastBusCode", snapshot.lastBusCode);
+                        vehicle.put("lastBus", snapshot.lastBus);
 
                         vehicle.put("remainSeatCount", snapshot.remainSeatCount);
                         vehicle.put("routeTypeCode", snapshot.routeTypeCode);

@@ -65,6 +65,28 @@ public class BusCongestionSnapshot {
     @Column(name = "station_sequence", length = 20)
     public String stationSequence;
 
+    // 현재 정류장 이름 (인천 API)
+    @Column(name = "current_station_name", length = 100)
+    public String currentStationName;
+
+    // 진행 방향 코드 및 이름
+    @Column(name = "direction_code", length = 10)
+    public String directionCode;
+
+    @Column(name = "direction", length = 20)
+    public String direction;
+
+    // 현재 위치 노드 순번 (인천 API)
+    @Column(name = "node_sequence", length = 20)
+    public String nodeSequence;
+
+    // 막차 여부
+    @Column(name = "last_bus_code", length = 10)
+    public String lastBusCode;
+
+    @Column(name = "last_bus", length = 20)
+    public String lastBus;
+
     // 차량 운행 상태
     @Column(name = "vehicle_state_code", length = 10)
     public String vehicleStateCode;
