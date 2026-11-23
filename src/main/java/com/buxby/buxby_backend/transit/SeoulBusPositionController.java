@@ -71,8 +71,22 @@ public class SeoulBusPositionController {
             @RequestBody BusPositionCollectRequest request
     ) {
 
+        if (request == null) {
+            return snapshotService.collectMany(null);
+        }
+
+        // 신규 지역별 요청
+        if (request.busTargets() != null
+                && !request.busTargets().isEmpty()) {
+
+            return snapshotService.collectManyTargets(
+                    request.busTargets()
+            );
+        }
+
+        // 기존 서울 버스 요청 호환
         return snapshotService.collectMany(
-                request == null ? null : request.busRouteIds()
+                request.busRouteIds()
         );
     }
 }

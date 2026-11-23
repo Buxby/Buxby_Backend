@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
         name = "bus_congestion_snapshots",
         indexes = {
                 @Index(
-                        name = "idx_bus_snapshot_route_time",
-                        columnList = "bus_route_id, collected_at"
+                        name = "idx_bus_snapshot_provider_route",
+                        columnList = "provider, bus_city_code, bus_route_id, collected_at"
                 ),
                 @Index(
                         name = "idx_bus_snapshot_vehicle_time",
@@ -29,6 +29,18 @@ public class BusCongestionSnapshot {
     @Column(name = "bus_route_id", nullable = false, length = 50)
     public String busRouteId;
 
+    // 교통정보 제공기관
+    @Column(name = "provider", length = 20)
+    public String provider;
+
+    // 운행 도시 코드
+    @Column(name = "bus_city_code")
+    public Integer busCityCode;
+
+    // 버스 번호
+    @Column(name = "bus_no", length = 30)
+    public String busNo;
+
     // 차량 ID
     @Column(name = "vehicle_id", nullable = false, length = 50)
     public String vehicleId;
@@ -44,6 +56,35 @@ public class BusCongestionSnapshot {
     // 다음 정류장 도착 예정시간 (초)
     @Column(name = "next_stop_arrival_seconds")
     public Integer nextStopArrivalSeconds;
+
+    // 현재 정류장
+    @Column(name = "current_station_id", length = 50)
+    public String currentStationId;
+
+    // 현재 정류장 순번
+    @Column(name = "station_sequence", length = 20)
+    public String stationSequence;
+
+    // 차량 운행 상태
+    @Column(name = "vehicle_state_code", length = 10)
+    public String vehicleStateCode;
+
+    @Column(name = "vehicle_state", length = 30)
+    public String vehicleState;
+
+    // 잔여 좌석 수
+    @Column(name = "remain_seat_count")
+    public Integer remainSeatCount;
+
+    // 경기 버스 추가 정보
+    @Column(name = "route_type_code", length = 10)
+    public String routeTypeCode;
+
+    @Column(name = "low_plate", length = 10)
+    public String lowPlate;
+
+    @Column(name = "tagless_code", length = 10)
+    public String taglessCode;
 
     // 혼잡도 코드 (3, 4, 5, 6 등)
     @Column(name = "congestion_code", length = 10)

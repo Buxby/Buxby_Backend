@@ -19,25 +19,82 @@ import java.util.Map;
 public class BusCongestionSnapshotService {
 
     private final SeoulBusPositionService positionService;
+    private final GyeonggiBusPositionService gyeonggiPositionService;
     private final BusCongestionSnapshotRepository repository;
 
     public BusCongestionSnapshotService(
             SeoulBusPositionService positionService,
+            GyeonggiBusPositionService gyeonggiPositionService,
             BusCongestionSnapshotRepository repository
     ) {
         this.positionService = positionService;
+        this.gyeonggiPositionService = gyeonggiPositionService;
         this.repository = repository;
     }
 
     // =====================================
-    // 1. 실시간 혼잡도 조회 및 DB 저장
+    // 지역별 실시간 버스 혼잡도 조회 및 DB 저장
     // =====================================
 
+    // 기존 Scheduler 및 단일 수집 기능 호환
     public Map<String, Object> collect(String busRouteId) {
 
-        // 기존 실시간 API 호출
-        Map<String, Object> apiResponse =
-                positionService.getPositions(busRouteId);
+        return collect(
+                new BusPositionCollectRequest.BusTarget(
+                        busRouteId,
+                        null,
+                        "SEOUL",
+                        4,
+                        1000
+                )
+        );
+    }
+
+
+    // 지역별 API 선택
+    public Map<String, Object> collect(
+            BusPositionCollectRequest.BusTarget target
+    ) {
+
+        if (target == null
+                || target.busRouteId() == null
+                || target.busRouteId().isBlank()) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "버스 노선 ID를 입력해 주세요."
+            );
+        }
+
+        String busRouteId = target.busRouteId().trim();
+
+        String provider = target.provider() == null
+                ? "UNKNOWN"
+                : target.provider().trim().toUpperCase();
+
+        // =====================================
+        // 1. 지역별 API 호출
+        // =====================================
+
+        Map<String, Object> apiResponse;
+
+        switch (provider) {
+
+            case "SEOUL" ->
+                    apiResponse =
+                            positionService.getPositions(busRouteId);
+
+            case "GYEONGGI" ->
+                    apiResponse =
+                            gyeonggiPositionService.getPositions(busRouteId);
+
+            default ->
+                    throw new ResponseStatusException(
+                            HttpStatus.NOT_IMPLEMENTED,
+                            "아직 지원하지 않는 버스 제공기관입니다: "
+                                    + provider
+                    );
+        }
 
         Object vehicleObject = apiResponse.get("vehicles");
 
@@ -47,7 +104,6 @@ public class BusCongestionSnapshotService {
             );
         }
 
-        // 한국 시간 기준 수집 시각
         LocalDateTime collectedAt =
                 LocalDateTime.now(ZoneId.of("Asia/Seoul"));
 
@@ -57,7 +113,7 @@ public class BusCongestionSnapshotService {
         int skippedCount = 0;
 
         // =====================================
-        // 2. 차량별 데이터를 Entity로 변환
+        // 2. 차량 정보를 DB Entity로 변환
         // =====================================
 
         for (Object object : vehicles) {
@@ -69,7 +125,6 @@ public class BusCongestionSnapshotService {
 
             String vehicleId = getText(vehicle, "vehicleId");
 
-            // 차량 ID가 없으면 기록하지 않음
             if (vehicleId == null) {
                 skippedCount++;
                 continue;
@@ -78,23 +133,37 @@ public class BusCongestionSnapshotService {
             BusCongestionSnapshot snapshot =
                     new BusCongestionSnapshot();
 
+            // 지역 및 노선 정보
+            snapshot.provider = provider;
+            snapshot.busCityCode = target.busCityCode();
+            snapshot.busNo = target.busNo();
             snapshot.busRouteId = busRouteId;
-            snapshot.vehicleId = vehicleId;
 
+            // 차량 기본 정보
+            snapshot.vehicleId = vehicleId;
             snapshot.vehicleNumber =
                     getText(vehicle, "vehicleNumber");
 
+            // 서울시 및 경기 API 공통 정보
+            snapshot.congestionCode =
+                    getText(vehicle, "congestionCode");
+
+            String congestionLabel =
+                    getText(vehicle, "congestionLabel");
+
+            if (congestionLabel == null) {
+                congestionLabel =
+                        getText(vehicle, "congestion");
+            }
+
+            snapshot.congestionLabel = congestionLabel;
+
+            // 서울시 API 정보
             snapshot.nextStopId =
                     getText(vehicle, "nextStopId");
 
             snapshot.nextStopArrivalSeconds =
                     getInteger(vehicle, "nextStopArrivalSeconds");
-
-            snapshot.congestionCode =
-                    getText(vehicle, "congestionCode");
-
-            snapshot.congestionLabel =
-                    getText(vehicle, "congestion");
 
             snapshot.isFullFlag =
                     getText(vehicle, "isFullFlag");
@@ -108,23 +177,54 @@ public class BusCongestionSnapshotService {
             snapshot.longitude =
                     getDouble(vehicle, "longitude");
 
-            snapshot.sourceDataTime =
+            // 경기 API 추가 정보
+            snapshot.currentStationId =
+                    getText(vehicle, "currentStationId");
+
+            snapshot.stationSequence =
+                    getText(vehicle, "stationSequence");
+
+            snapshot.vehicleStateCode =
+                    getText(vehicle, "vehicleStateCode");
+
+            snapshot.vehicleState =
+                    getText(vehicle, "vehicleState");
+
+            snapshot.remainSeatCount =
+                    getInteger(vehicle, "remainSeatCount");
+
+            snapshot.routeTypeCode =
+                    getText(vehicle, "routeTypeCode");
+
+            snapshot.lowPlate =
+                    getText(vehicle, "lowPlate");
+
+            snapshot.taglessCode =
+                    getText(vehicle, "taglessCode");
+
+            // 외부 API 데이터 수집 시각
+            String sourceTime =
                     getText(vehicle, "dataTime");
 
+            if (sourceTime == null && apiResponse.get("queryTime") != null) {
+                sourceTime = apiResponse.get("queryTime").toString();
+            }
+
+            snapshot.sourceDataTime = sourceTime;
             snapshot.collectedAt = collectedAt;
 
             snapshots.add(snapshot);
         }
 
         // =====================================
-        // 3. DB에 일괄 저장
+        // 3. DB 일괄 저장
         // =====================================
 
         List<BusCongestionSnapshot> savedSnapshots =
                 repository.saveAll(snapshots);
 
         // =====================================
-        // 4. 저장 결과 반환
+        // 4. 결과 반환
         // =====================================
 
         Map<String, Object> result =
@@ -134,10 +234,16 @@ public class BusCongestionSnapshotService {
                 "status",
                 apiResponse.getOrDefault("status", "SUCCESS")
         );
+
+        result.put("provider", provider);
+        result.put("busCityCode", target.busCityCode());
+        result.put("busNo", target.busNo());
         result.put("busRouteId", busRouteId);
+
         result.put("fetchedCount", vehicles.size());
         result.put("savedCount", savedSnapshots.size());
         result.put("skippedCount", skippedCount);
+
         result.put("collectedAt", collectedAt);
         result.put("snapshots", savedSnapshots);
 
@@ -225,20 +331,15 @@ public class BusCongestionSnapshotService {
         }
     }
 
-// =====================================
-// 여러 노선의 혼잡도 조회 및 DB 저장
-// =====================================
-
-
     // =====================================
     // 여러 노선의 혼잡도 조회 및 DB 저장
     // =====================================
 
+    // 기존 요청 형식 호환
     public Map<String, Object> collectMany(
             List<String> busRouteIds
     ) {
 
-        // 입력값 확인
         if (busRouteIds == null || busRouteIds.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -246,26 +347,82 @@ public class BusCongestionSnapshotService {
             );
         }
 
-        // 빈 값 제거 및 중복 노선 제거
-        Set<String> targets = new LinkedHashSet<>();
+        List<BusPositionCollectRequest.BusTarget> targets =
+                new ArrayList<>();
 
         for (String id : busRouteIds) {
 
-            if (id == null || id.isBlank()) {
+            if (id == null || id.isBlank()) continue;
+
+            targets.add(
+                    new BusPositionCollectRequest.BusTarget(
+                            id.trim(),
+                            null,
+                            "SEOUL",
+                            4,
+                            1000
+                    )
+            );
+        }
+
+        return collectManyTargets(targets);
+    }
+
+
+    // 지역별 요청을 처리하는 통합 Batch
+    public Map<String, Object> collectManyTargets(
+            List<BusPositionCollectRequest.BusTarget> requestedTargets
+    ) {
+
+        if (requestedTargets == null || requestedTargets.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "버스 수집 대상이 없습니다."
+            );
+        }
+
+        // 지역 + 도시 + 노선 ID를 기준으로 중복 제거
+        Map<String, BusPositionCollectRequest.BusTarget> targets =
+                new LinkedHashMap<>();
+
+        for (BusPositionCollectRequest.BusTarget target : requestedTargets) {
+
+            if (target == null
+                    || target.busRouteId() == null
+                    || target.busRouteId().isBlank()) {
                 continue;
             }
 
-            targets.add(id.trim());
+            String provider = target.provider() == null
+                    ? "UNKNOWN"
+                    : target.provider().trim().toUpperCase();
+
+            String routeId = target.busRouteId().trim();
+
+            String key =
+                    provider + ":" +
+                            target.busCityCode() + ":" +
+                            routeId;
+
+            targets.putIfAbsent(
+                    key,
+                    new BusPositionCollectRequest.BusTarget(
+                            routeId,
+                            target.busNo(),
+                            provider,
+                            target.providerCode(),
+                            target.busCityCode()
+                    )
+            );
         }
 
         if (targets.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "유효한 버스 노선 ID가 없습니다."
+                    "유효한 버스 수집 대상이 없습니다."
             );
         }
 
-        // 한 번의 요청에서 과도한 API 호출 방지
         if (targets.size() > 10) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -273,58 +430,40 @@ public class BusCongestionSnapshotService {
             );
         }
 
-        List<Map<String, Object>> results =
-                new ArrayList<>();
+        List<Map<String, Object>> results = new ArrayList<>();
 
         int successCount = 0;
         int noDataCount = 0;
         int failedCount = 0;
 
-        // 노선별 혼잡도 수집
-        for (String busRouteId : targets) {
+        for (BusPositionCollectRequest.BusTarget target
+                : targets.values()) {
 
             Map<String, Object> routeResult =
                     new LinkedHashMap<>();
 
-            routeResult.put("busRouteId", busRouteId);
+            routeResult.put("provider", target.provider());
+            routeResult.put("busNo", target.busNo());
+            routeResult.put("busCityCode", target.busCityCode());
+            routeResult.put("busRouteId", target.busRouteId());
 
             try {
 
-                // 기존 단일 노선 수집 기능 재사용
-                Map<String, Object> response =
-                        collect(busRouteId);
+                Map<String, Object> response = collect(target);
 
-                String collectionStatus =
-                        String.valueOf(
-                                response.getOrDefault("status", "SUCCESS")
-                        );
-
-                routeResult.put("status", collectionStatus);
-
-                routeResult.put(
-                        "fetchedCount",
-                        response.get("fetchedCount")
+                String status = String.valueOf(
+                        response.getOrDefault("status", "SUCCESS")
                 );
 
-                routeResult.put(
-                        "savedCount",
-                        response.get("savedCount")
-                );
+                routeResult.put("status", status);
+                routeResult.put("fetchedCount", response.get("fetchedCount"));
+                routeResult.put("savedCount", response.get("savedCount"));
+                routeResult.put("skippedCount", response.get("skippedCount"));
+                routeResult.put("collectedAt", response.get("collectedAt"));
 
-                routeResult.put(
-                        "collectedAt",
-                        response.get("collectedAt")
-                );
+                Object snapshotObject = response.get("snapshots");
 
-                // =====================================
-                // 신규: 저장된 차량별 혼잡도 정보 반환
-                // =====================================
-
-                Object snapshotObject =
-                        response.get("snapshots");
-
-                List<Map<String, Object>> vehicles =
-                        new ArrayList<>();
+                List<Map<String, Object>> vehicles = new ArrayList<>();
 
                 if (snapshotObject instanceof List<?> snapshots) {
 
@@ -338,56 +477,38 @@ public class BusCongestionSnapshotService {
                                 new LinkedHashMap<>();
 
                         vehicle.put("id", snapshot.id);
+                        vehicle.put("provider", snapshot.provider);
+                        vehicle.put("busCityCode", snapshot.busCityCode);
 
-                        vehicle.put(
-                                "vehicleId",
-                                snapshot.vehicleId
-                        );
+                        vehicle.put("vehicleId", snapshot.vehicleId);
+                        vehicle.put("vehicleNumber", snapshot.vehicleNumber);
 
-                        vehicle.put(
-                                "vehicleNumber",
-                                snapshot.vehicleNumber
-                        );
+                        vehicle.put("congestionCode", snapshot.congestionCode);
+                        vehicle.put("congestionLabel", snapshot.congestionLabel);
 
-                        vehicle.put(
-                                "congestionCode",
-                                snapshot.congestionCode
-                        );
-
-                        vehicle.put(
-                                "congestionLabel",
-                                snapshot.congestionLabel
-                        );
-
-                        vehicle.put(
-                                "isFullFlag",
-                                snapshot.isFullFlag
-                        );
-
-                        vehicle.put(
-                                "nextStopId",
-                                snapshot.nextStopId
-                        );
-
+                        vehicle.put("nextStopId", snapshot.nextStopId);
                         vehicle.put(
                                 "nextStopArrivalSeconds",
                                 snapshot.nextStopArrivalSeconds
                         );
 
-                        vehicle.put(
-                                "latitude",
-                                snapshot.latitude
-                        );
+                        vehicle.put("currentStationId", snapshot.currentStationId);
+                        vehicle.put("stationSequence", snapshot.stationSequence);
+                        vehicle.put("vehicleStateCode", snapshot.vehicleStateCode);
+                        vehicle.put("vehicleState", snapshot.vehicleState);
 
-                        vehicle.put(
-                                "longitude",
-                                snapshot.longitude
-                        );
+                        vehicle.put("remainSeatCount", snapshot.remainSeatCount);
+                        vehicle.put("routeTypeCode", snapshot.routeTypeCode);
+                        vehicle.put("lowPlate", snapshot.lowPlate);
+                        vehicle.put("taglessCode", snapshot.taglessCode);
 
-                        vehicle.put(
-                                "collectedAt",
-                                snapshot.collectedAt
-                        );
+                        vehicle.put("isFullFlag", snapshot.isFullFlag);
+                        vehicle.put("stopFlag", snapshot.stopFlag);
+
+                        vehicle.put("latitude", snapshot.latitude);
+                        vehicle.put("longitude", snapshot.longitude);
+
+                        vehicle.put("collectedAt", snapshot.collectedAt);
 
                         vehicles.add(vehicle);
                     }
@@ -395,7 +516,7 @@ public class BusCongestionSnapshotService {
 
                 routeResult.put("vehicles", vehicles);
 
-                if ("NO_DATA".equals(collectionStatus)) {
+                if ("NO_DATA".equals(status)) {
                     noDataCount++;
                 } else {
                     successCount++;
@@ -403,45 +524,35 @@ public class BusCongestionSnapshotService {
 
             } catch (ResponseStatusException e) {
 
-            routeResult.put("status", "FAILED");
-            routeResult.put(
-                    "httpStatus",
-                    e.getStatusCode().value()
-            );
+                routeResult.put("status", "FAILED");
+                routeResult.put("httpStatus", e.getStatusCode().value());
 
-            routeResult.put(
-                    "message",
-                    e.getReason() != null
-                            ? e.getReason()
-                            : "외부 API 요청 실패"
-            );
+                routeResult.put(
+                        "message",
+                        e.getReason() != null
+                                ? e.getReason()
+                                : "외부 API 요청 실패"
+                );
 
-            failedCount++;
+                failedCount++;
 
-        } catch (Exception e) {
+            } catch (Exception e) {
 
-            routeResult.put("status", "FAILED");
+                routeResult.put("status", "FAILED");
+                routeResult.put("errorType", e.getClass().getSimpleName());
 
-            routeResult.put(
-                    "errorType",
-                    e.getClass().getSimpleName()
-            );
+                routeResult.put(
+                        "message",
+                        "DB 저장 또는 서버 내부 처리 중 오류가 발생했습니다."
+                );
 
-            routeResult.put(
-                    "message",
-                    "DB 저장 또는 서버 내부 처리 중 오류가 발생했습니다."
-            );
-
-            failedCount++;
-        }
+                failedCount++;
+            }
 
             results.add(routeResult);
         }
 
-        // =====================================
-        // 전체 결과 반환
-        // =====================================
-
+        // 전체 결과
         Map<String, Object> result =
                 new LinkedHashMap<>();
 
@@ -449,7 +560,7 @@ public class BusCongestionSnapshotService {
 
         if (failedCount == 0) {
             status = "SUCCESS";
-        } else if (successCount > 0) {
+        } else if (successCount > 0 || noDataCount > 0) {
             status = "PARTIAL_SUCCESS";
         } else {
             status = "FAILED";
@@ -458,12 +569,13 @@ public class BusCongestionSnapshotService {
         result.put("status", status);
         result.put("requestedCount", targets.size());
         result.put("successCount", successCount);
+        result.put("noDataCount", noDataCount);
         result.put("failedCount", failedCount);
         result.put("results", results);
-        result.put("noDataCount", noDataCount);
 
         return result;
     }
+
 
 
 }
