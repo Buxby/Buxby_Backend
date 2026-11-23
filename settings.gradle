@@ -1,1 +1,9 @@
+// 플러그인(Spring Boot 등)도 Maven Central 대신 Google 미러에서 먼저 받는다 (build.gradle 참고)
+pluginManagement {
+	repositories {
+		maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2/') }
+		gradlePluginPortal()
+	}
+}
+
 rootProject.name = 'Buxby_Backend'

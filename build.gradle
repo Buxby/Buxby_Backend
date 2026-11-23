@@ -15,7 +15,11 @@ java {
 	}
 }
 
+// Maven Central은 Render 같은 공유 빌드 서버 IP에 429(Too Many Requests)를 자주 준다.
+// 같은 내용을 제공하는 Google 미러를 먼저 쓴다. Gradle은 저장소가 오류(429 등)를 내면
+// 다음 저장소로 넘어가지 않고 실패하므로 미러를 반드시 앞에 둔다
 repositories {
+	maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2/') }
 	mavenCentral()
 }
 
@@ -43,6 +47,15 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Docker 의존성 캐시 층용: 라이브러리 jar까지 실제로 받아 둔다
+// (dependencies 작업은 목록만 받아서, 커밋마다 bootJar 단계에서 jar를 전부 다시 받았다)
+tasks.register('downloadDependencies') {
+	def classpaths = [configurations.compileClasspath, configurations.runtimeClasspath]
+	doLast {
+		classpaths.each { it.files }
+	}
 }
 
 tasks.named('test') {
