@@ -79,6 +79,17 @@ public class IncheonBusPositionService {
                     ))
                     .toUri();
 
+            // 인증키를 가린 실제 요청 URL 기록
+            String safeRequestUri = uri.toString().replace(
+                    apiKey,
+                    "[REDACTED]"
+            );
+
+            log.info(
+                    "[인천 API 요청 URL] {}",
+                    safeRequestUri
+            );
+
             // =====================================
             // 2. 인천시 API 호출
             // =====================================
@@ -89,27 +100,20 @@ public class IncheonBusPositionService {
                     .body(String.class);
 
             // 인천 API 원본 XML 진단
+            // 원본 XML을 한 줄로 정리해서 로그 출력
             if (xml != null) {
 
-                String safeXml = xml;
+                String safeXml = xml.replaceAll("\\s+", " ").trim();
 
-                // 인증키 노출 방지
                 if (apiKey != null && !apiKey.isBlank()) {
                     safeXml = safeXml.replace(apiKey, "[REDACTED]");
                 }
 
-                // 로그 길이 제한
                 if (safeXml.length() > 2500) {
                     safeXml = safeXml.substring(0, 2500);
                 }
 
                 log.warn("[인천 API 원본 응답] {}", safeXml);
-            }
-
-            if (xml == null || xml.isBlank()) {
-                throw new IllegalStateException(
-                        "인천 버스 위치정보 응답이 비어 있습니다."
-                );
             }
 
             // =====================================
