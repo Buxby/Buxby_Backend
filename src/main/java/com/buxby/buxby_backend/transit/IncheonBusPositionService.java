@@ -102,6 +102,8 @@ public class IncheonBusPositionService {
                 if (safeXml.length() > 2500) {
                     safeXml = safeXml.substring(0, 2500);
                 }
+
+                log.warn("[인천 API 원본 응답] {}", safeXml);
             }
 
             if (xml == null || xml.isBlank()) {
