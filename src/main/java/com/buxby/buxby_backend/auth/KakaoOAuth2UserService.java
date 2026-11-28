@@ -5,8 +5,8 @@ import com.buxby.buxby_backend.user.AppUser;
 import com.buxby.buxby_backend.user.AppUserRepository;
 
 import java.util.Map;
+import java.util.Optional;
 
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
@@ -38,6 +38,11 @@ public class KakaoOAuth2UserService
         OAuth2User kakaoUser =
                 delegate.loadUser(userRequest);
 
+        return processKakaoUser(kakaoUser);
+    }
+
+    // 카카오 사용자 속성 처리와 회원 생성/보완 로직을 분리해 테스트 가능하게 한다.
+    OAuth2User processKakaoUser(OAuth2User kakaoUser) {
         Map<String, Object> attributes =
                 kakaoUser.getAttributes();
 
@@ -66,8 +71,8 @@ public class KakaoOAuth2UserService
 
             Object emailObject = account.get("email");
 
-            if (emailObject instanceof String value) {
-                email = value;
+            if (emailObject instanceof String value && !value.isBlank()) {
+                email = value.trim();
             }
 
             Object profileObject = account.get("profile");
@@ -85,18 +90,23 @@ public class KakaoOAuth2UserService
             }
         }
 
-        // 기존 카카오 회원인지 확인
-        boolean exists =
-                userRepository.existsByProviderAndProviderId(
+        // provider + providerId로 기존 카카오 회원 조회
+        Optional<AppUser> existingUser =
+                userRepository.findByProviderAndProviderId(
                         "KAKAO",
                         providerId
                 );
 
-        // 최초 로그인이라면 회원 정보 저장
-        if (!exists) {
-
+        if (existingUser.isPresent()) {
+            // 기존 이메일이 비어 있고 카카오가 새 이메일을 제공한 경우에만 보완한다.
+            AppUser user = existingUser.get();
+            if (user.updateEmailIfMissing(email)) {
+                userRepository.save(user);
+            }
+        } else {
+            // 신규 회원은 카카오에서 받은 이메일이 있을 때 함께 저장한다.
             AppUser user = new AppUser(
-                    null,
+                    email,
                     null,
                     nickname,
                     "KAKAO",

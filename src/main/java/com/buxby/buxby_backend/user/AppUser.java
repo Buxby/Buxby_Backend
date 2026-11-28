@@ -71,4 +71,23 @@ public class AppUser {
     public String getProviderId() {
         return providerId;
     }
+
+    /**
+     * 이메일이 아직 비어 있는 소셜 회원에게만 새 이메일을 보완한다.
+     * 기존에 저장된 이메일은 자동으로 덮어쓰지 않는다.
+     *
+     * @return 이메일 값이 실제로 변경되었으면 true
+     */
+    public boolean updateEmailIfMissing(String newEmail) {
+        if (newEmail == null || newEmail.isBlank()) {
+            return false;
+        }
+
+        if (email != null && !email.isBlank()) {
+            return false;
+        }
+
+        email = newEmail.trim();
+        return true;
+    }
 }
